@@ -106,3 +106,9 @@ emqx/log/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Commit message temp file
+commit-message.txt
+
+# Trae specs directory (local development only)
+.trae/

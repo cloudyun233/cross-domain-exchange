@@ -36,6 +36,8 @@ cross-domain-exchange/
 ├── docker-compose.yml
 ├── emqx/             # emqx.conf、acl.conf、rule-engine 规则
 ├── scripts/          # tc弱网脚本、QUIC对比测试脚本
+├── docs/             # 文档目录
+│   └── TEST_STEPS.md # 详细测试步骤文档
 └── README.md
 ```
 
@@ -45,51 +47,125 @@ cross-domain-exchange/
 
 - Java 17+
 - Node.js 18+
+- Maven 3.6+
 - Docker & Docker Compose（可选，用于运行EMQX）
 
-### 一键启动
+### 一键启动（推荐）
 
-#### 方式一：使用Docker Compose（推荐）
+请按照以下步骤在本机环境一键启动项目：
+
+#### 步骤1：检查环境
 
 ```bash
-# 启动所有服务
+# 检查Java版本
+java -version
+
+# 检查Maven版本
+mvn -version
+
+# 检查Node.js版本
+node -v
+
+# 检查npm版本
+npm -v
+
+# 检查Docker（如果使用Docker运行EMQX）
+docker -v
+docker-compose -v
+```
+
+#### 步骤2：启动EMQX Broker
+
+**方式A：使用Docker Compose（最简单）**
+
+```bash
+# 在项目根目录执行
 docker-compose up -d
 
-# 查看日志
-docker-compose logs -f
+# 查看EMQX启动状态
+docker-compose ps
 
-# 停止服务
-docker-compose down
+# 查看EMQX日志
+docker-compose logs -f emqx
 ```
 
-#### 方式二：手动启动
-
-1. **启动EMQX Broker**
+**方式B：使用Docker单独启动**
 
 ```bash
-# 使用Docker启动EMQX
-docker run -d --name emqx -p 1883:1883 -p 8883:8883 -p 14567:14567 -p 18083:18083 emqx/emqx:5.8.0
+# 拉取并启动EMQX
+docker run -d --name emqx \
+  -p 1883:1883 \
+  -p 8883:8883 \
+  -p 14567:14567 \
+  -p 18083:18083 \
+  emqx/emqx:5.8.0
+
+# 确认容器运行
+docker ps
 ```
 
-2. **启动后端服务**
+等待30-60秒，直到EMQX完全启动。可以通过访问 http://localhost:18083 验证（默认账号admin/public）。
+
+#### 步骤3：启动后端服务
 
 ```bash
+# 进入后端目录
 cd backend
-mvn clean install
+
+# 编译项目
+mvn clean compile -DskipTests
+
+# 启动后端服务
 mvn spring-boot:run
 ```
 
-后端服务将在 http://localhost:8080 启动
+后端服务将在 http://localhost:8080 启动。
 
-3. **启动前端服务**
+看到以下日志表示启动成功：
+```
+Started CrossDomainExchangeApplication in X.XXX seconds
+```
+
+#### 步骤4：启动前端服务
+
+打开一个新的终端窗口：
 
 ```bash
+# 进入前端目录
 cd frontend
+
+# 安装依赖
 npm install
+
+# 如果网络较慢，使用淘宝镜像
+npm install --registry=https://registry.npmmirror.com
+
+# 启动前端开发服务器
 npm run dev
 ```
 
-前端服务将在 http://localhost:5173 启动
+前端服务将在 http://localhost:5173 启动。
+
+#### 步骤5：访问系统
+
+1. 打开浏览器访问：http://localhost:5173
+2. 使用测试账号登录：
+   - 管理员：`admin` / `admin123`
+   - 普通用户：`user1` / `user123`
+3. 开始使用系统！
+
+## 详细测试步骤
+
+完整的测试步骤文档请查看：[docs/TEST_STEPS.md](./docs/TEST_STEPS.md)
+
+该文档包含：
+- 环境准备详细说明
+- EMQX部署验证
+- 后端和前端服务启动验证
+- 完整的功能测试步骤（登录、MQTT连接、消息发布、监控等）
+- 性能测试指南
+- 故障排查指南
+- 测试记录模板
 
 ## 演示步骤
 
