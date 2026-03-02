@@ -2,6 +2,7 @@ package com.crossdomain.exchange.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Builder.Default;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -15,6 +16,7 @@ import lombok.NoArgsConstructor;
 public class LoginResponse {
 
     private String token;
+    @Default
     private String type = "Bearer";
     private Long userId;
     private String username;
