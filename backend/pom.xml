@@ -20,8 +20,8 @@
 
     <properties>
         <java.version>17</java.version>
-        <jjwt.version>0.12.3</jjwt>
-        <paho.version>1.2.5</paho>
+        <jjwt.version>0.12.3</jjwt.version>
+        <paho.version>1.2.5</paho.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
     </properties>
 
