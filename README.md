@@ -45,10 +45,24 @@ cross-domain-exchange/
 
 ### 前置要求
 
-- Java 17+
-- Node.js 18+
-- Maven 3.6+
+- Java 17+ ✅ (已安装: OpenJDK 17.0.17)
+- Node.js 18+ ✅ (已安装: v24.13.1)
+- Maven 3.6+ (项目已包含 Maven Wrapper，无需单独安装)
 - Docker & Docker Compose（可选，用于运行EMQX）
+
+### Docker 安装说明
+
+如果您需要使用 Docker 运行 EMQX，请按照以下方式之一安装 Docker Desktop：
+
+**方式1：使用 winget 安装（推荐）**
+```powershell
+winget install Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
+```
+
+**方式2：手动下载安装**
+访问 https://www.docker.com/products/docker-desktop/ 下载并安装 Docker Desktop for Windows
+
+安装完成后，请重启电脑并启动 Docker Desktop。
 
 ### 一键启动（推荐）
 
@@ -60,8 +74,9 @@ cross-domain-exchange/
 # 检查Java版本
 java -version
 
-# 检查Maven版本
-mvn -version
+# 检查Maven Wrapper（项目已包含）
+cd backend
+.\mvnw.cmd --version
 
 # 检查Node.js版本
 node -v
@@ -112,11 +127,11 @@ docker ps
 # 进入后端目录
 cd backend
 
-# 编译项目
-mvn clean compile -DskipTests
+# 编译项目（使用 Maven Wrapper）
+.\mvnw.cmd clean compile -DskipTests
 
-# 启动后端服务
-mvn spring-boot:run
+# 启动后端服务（使用 Maven Wrapper）
+.\mvnw.cmd spring-boot:run
 ```
 
 后端服务将在 http://localhost:8080 启动。
@@ -316,13 +331,13 @@ Authorization: Bearer <token>
 cd backend
 
 # 编译
-mvn clean compile
+.\mvnw.cmd clean compile
 
 # 运行测试
-mvn test
+.\mvnw.cmd test
 
 # 打包
-mvn clean package
+.\mvnw.cmd clean package
 ```
 
 ### 前端开发
