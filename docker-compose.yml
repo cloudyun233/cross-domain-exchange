@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  emqx:
+    image: emqx/emqx:5.8.0
+    container_name: cross-domain-emqx
+    ports:
+      - "1883:1883"
+      - "8883:8883"
+      - "14567:14567"
+      - "18083:18083"
+    volumes:
+      - ./emqx/emqx.conf:/opt/emqx/etc/emqx.conf
+      - ./emqx/acl.conf:/opt/emqx/etc/acl.conf
+      - emqx-data:/opt/emqx/data
+      - emqx-log:/opt/emqx/log
+    environment:
+      - EMQX_NAME=cross-domain-emqx
+      - EMQX_HOST=emqx
+    networks:
+      - domain-1
+      - domain-2
+      - domain-3
+      - domain-4
+    healthcheck:
+      test: ["CMD", "emqx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  domain-1:
+    name: cross-domain-domain-1
+    driver: bridge
+  domain-2:
+    name: cross-domain-domain-2
+    driver: bridge
+  domain-3:
+    name: cross-domain-domain-3
+    driver: bridge
+  domain-4:
+    name: cross-domain-domain-4
+    driver: bridge
+
+volumes:
+  emqx-data:
+  emqx-log:
