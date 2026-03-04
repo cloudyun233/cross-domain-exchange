@@ -45,6 +45,13 @@ mqtt:
     initial-delay-ms: 1000
     max-delay-ms: 30000
 
+# 应用配置
+app:
+  role: subscriber
+  instance-id: instance-1
+  default-topic: cross-domain/exchange/default
+  default-qos: 1
+
 # 日志配置
 logging:
   level:
