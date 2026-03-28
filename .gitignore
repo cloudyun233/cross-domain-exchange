@@ -112,3 +112,6 @@ commit-message.txt
 
 # Trae specs directory (local development only)
 .trae/
+
+# Local Maven repository cache
+.java-home/
