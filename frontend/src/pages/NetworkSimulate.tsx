@@ -3,7 +3,7 @@ import { Card, Typography, Space, Button, Slider, Tag, Row, Col, Alert, Descript
 import { ThunderboltOutlined, WifiOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
 interface Preset {
   name: string;

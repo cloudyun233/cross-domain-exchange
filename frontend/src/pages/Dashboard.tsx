@@ -2,17 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { Row, Col, Card, Statistic, Tag, Badge, Space, Typography } from 'antd';
 import {
   CloudServerOutlined, MessageOutlined, CheckCircleOutlined,
-  ClockCircleOutlined, ApiOutlined, TeamOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import { api } from '../services/api';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<any>({});
   const [msgStats, setMsgStats] = useState<any>({});
-  const [clientStats, setClientStats] = useState<any>({});
   const [connStatus, setConnStatus] = useState<any>({});
 
   const fetchData = async () => {
@@ -22,7 +21,7 @@ const Dashboard: React.FC = () => {
       ]);
       if (m.success) setStats(m.data);
       if (ms.success) setMsgStats(ms.data);
-      if (cs.success) setClientStats(cs.data);
+      if (cs.success) { /* silent, not displaying client stats yet */ }
       if (conn.success) setConnStatus(conn.data);
     } catch (e) { /* silent */ }
   };

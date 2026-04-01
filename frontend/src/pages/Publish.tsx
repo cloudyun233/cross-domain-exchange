@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Select, Input, Button, Radio, message, Tree, Typography, Row, Col, Tag, Space } from 'antd';
+import { Card, Input, Button, Radio, message, Tree, Typography, Row, Col, Tag, Space } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
 

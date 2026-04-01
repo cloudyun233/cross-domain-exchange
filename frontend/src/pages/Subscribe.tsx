@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Card, Input, Button, Select, Typography, Tag, List, Space, message, Badge, Empty } from 'antd';
-import { CloudDownloadOutlined, PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 
 interface ReceivedMessage {
   topic: string;
@@ -25,7 +25,7 @@ const Subscribe: React.FC = () => {
     const es = api.createSubscribeStream(topic, qos);
     esRef.current = es;
 
-    es.addEventListener('connected', (e: MessageEvent) => {
+    es.addEventListener('connected', (_e: MessageEvent) => {
       message.success('SSE连接已建立, 等待消息...');
     });
 

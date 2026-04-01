@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Tag, Typography, Space, theme, Avatar, Dropdown } from 'antd';
+import { Layout, Menu, Button, Tag, Typography, Space, Avatar, Dropdown } from 'antd';
 import {
   DashboardOutlined, SendOutlined, CloudDownloadOutlined,
   ApartmentOutlined, UserOutlined, SafetyOutlined,
@@ -17,7 +17,6 @@ const MainLayout: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { token: themeToken } = theme.useToken();
 
   const menuItems = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: '监控大盘' },
