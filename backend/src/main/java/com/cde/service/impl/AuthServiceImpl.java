@@ -13,6 +13,7 @@ import com.cde.security.JwtUtil;
 import com.cde.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -39,11 +40,11 @@ public class AuthServiceImpl implements AuthService {
                 new LambdaQueryWrapper<SysUser>().eq(SysUser::getClientId, request.getUsername()));
 
         if (user == null) {
-            throw new RuntimeException("用户不存在: " + request.getUsername());
+            throw new BadCredentialsException("用户不存在: " + request.getUsername());
         }
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new RuntimeException("密码错误");
+            throw new BadCredentialsException("密码错误");
         }
 
         SysDomain domain = domainMapper.selectById(user.getDomainId());
@@ -65,7 +66,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public LoginResponse refreshToken(String oldToken) {
         if (!jwtUtil.validateToken(oldToken)) {
-            throw new RuntimeException("令牌无效或已过期");
+            throw new BadCredentialsException("令牌无效或已过期");
         }
         String clientId = jwtUtil.getClientIdFromToken(oldToken);
         String domainCode = jwtUtil.getDomainCodeFromToken(oldToken);
