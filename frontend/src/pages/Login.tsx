@@ -1,80 +1,75 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Card, Form, Input, Button, Typography, message, Space } from 'antd';
+import { UserOutlined, LockOutlined, SafetyOutlined } from '@ant-design/icons';
+import { useAuth } from '../contexts/AuthContext';
+
+const { Title, Text, Paragraph } = Typography;
 
 const Login: React.FC = () => {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuth()
-  const navigate = useNavigate()
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setIsLoading(true)
-
+  const onFinish = async (values: { username: string; password: string }) => {
+    setLoading(true);
     try {
-      await login(username, password)
-      navigate('/dashboard')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '登录失败')
+      await login(values.username, values.password);
+      message.success('登录成功');
+      navigate('/dashboard');
+    } catch (err: any) {
+      message.error(err.message || '登录失败');
     } finally {
-      setIsLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center mb-6">跨域数据交换系统</h1>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2">
-              用户名
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="请输入用户名"
-              required
-            />
-          </div>
-          <div className="mb-6">
-            <label className="block text-gray-700 text-sm font-bold mb-2">
-              密码
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="请输入密码"
-              required
-            />
-          </div>
-          {error && (
-            <div className="mb-4 text-red-500 text-sm">{error}</div>
-          )}
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors"
-          >
-            {isLoading ? '登录中...' : '登录'}
-          </button>
-        </form>
-        <div className="mt-6 text-sm text-gray-600">
-          <p>测试账号：</p>
-          <p>管理员: admin / admin123</p>
-          <p>用户1: user1 / user123</p>
-        </div>
-      </div>
-    </div>
-  )
-}
+    <div className="login-bg">
+      <Card
+        style={{
+          width: 420, borderRadius: 12,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        }}
+        styles={{ body: { padding: 40 } }}
+      >
+        <Space direction="vertical" size="large" style={{ width: '100%', textAlign: 'center' }}>
+          <SafetyOutlined style={{ fontSize: 48, color: '#1890ff' }} />
+          <Title level={3} style={{ margin: 0 }}>跨域数据交换系统</Title>
+          <Text type="secondary">基于发布订阅机制的安全数据交换平台</Text>
+        </Space>
 
-export default Login
+        <Form
+          name="login"
+          onFinish={onFinish}
+          size="large"
+          style={{ marginTop: 32 }}
+        >
+          <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
+            <Input prefix={<UserOutlined />} placeholder="用户名 / ClientID" autoComplete="username" />
+          </Form.Item>
+          <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
+            <Input.Password prefix={<LockOutlined />} placeholder="密码" autoComplete="current-password" />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" block loading={loading}>
+              登 录
+            </Button>
+          </Form.Item>
+        </Form>
+
+        <Card size="small" style={{ background: '#f6f8fa', marginTop: 8 }}>
+          <Text strong>演示账号：</Text>
+          <Paragraph style={{ margin: '4px 0 0', fontSize: 12 }} type="secondary">
+            管理员: admin / admin123<br />
+            生产者(医疗域): producer_swu / 123456<br />
+            消费者(政务域): consumer_social / 123456<br />
+            消费者(企业域): consumer_c / 123456
+          </Paragraph>
+        </Card>
+      </Card>
+    </div>
+  );
+};
+
+export default Login;

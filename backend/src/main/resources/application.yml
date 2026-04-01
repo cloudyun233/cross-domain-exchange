@@ -4,56 +4,67 @@ server:
 spring:
   application:
     name: cross-domain-exchange
-  
+
   datasource:
-    url: jdbc:h2:mem:crossdomaindb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:mem:crossdomaindb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
     username: sa
-    password: 
-  
+    password:
+
   h2:
     console:
       enabled: true
       path: /h2-console
-  
-  jpa:
-    hibernate:
-      ddl-auto: create-drop
-    show-sql: false
-    properties:
-      hibernate:
-        format_sql: true
-        dialect: org.hibernate.dialect.H2Dialect
+      settings:
+        web-allow-others: true
 
-# JWT配置
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+      data-locations: classpath:db/data.sql
+
+# MyBatis-Plus
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# JWT
 jwt:
   secret: cross-domain-exchange-secret-key-2024-jwt-token-generation
   expiration: 86400000
 
-# MQTT配置
+# MQTT Broker
 mqtt:
   broker:
     host: localhost
-    tcp-port: 1883
-    tls-port: 8883
     quic-port: 14567
-    client-id-prefix: cross-domain-exchange
-  
-  # 重试配置
+    tls-port: 8883
+    tcp-port: 1883
+    client-id-prefix: cde-backend
   retry:
     max-attempts: 5
     initial-delay-ms: 1000
     max-delay-ms: 30000
 
-# 应用配置
-app:
-  role: subscriber
-  instance-id: instance-1
-  default-topic: cross-domain/exchange/default
-  default-qos: 1
+# EMQX HTTP API
+emqx:
+  api:
+    base-url: http://localhost:18083/api/v5
+    username: admin
+    password: public
+  monitor:
+    poll-interval-ms: 5000
 
-# 日志配置
+# Logging
 logging:
   level:
-    com.crossdomain.exchange: DEBUG
-    org.springframework.security: DEBUG
+    com.cde: DEBUG
+    org.springframework.security: WARN

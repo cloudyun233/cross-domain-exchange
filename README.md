@@ -1,380 +1,118 @@
-# cross-domain-exchange
+# 基于发布订阅机制的跨域数据交换系统
 
-《基于发布订阅机制的数据跨域交换方法》本科毕设原型系统
+## 1. 系统概述
 
-## 项目简介
+本系统是一个基于 MQTT 发布/订阅架构的跨域数据安全交换平台，核心由 EMQX 5.x 作为消息引擎，Spring Boot 3.x 作为业务逻辑层，React 18 + Ant Design v5 作为管理前端。
 
-本系统是一个基于MQTT协议的跨域数据交换系统原型，使用EMQX作为Broker，通过Docker网络隔离模拟不同安全域，支持跨域主题路由转发、安全机制、可靠性保障、弱网环境模拟和可视化监控。
+### 技术栈
 
-## 技术栈
+| 层级 | 技术选型 |
+|------|---------|
+| 表现层 | React 18 + Ant Design v5 + ECharts 5.x |
+| 业务逻辑层 | Spring Boot 3.x + MyBatis-Plus + JWT |
+| 消息引擎层 | EMQX 5.8.0 (TCP/TLS/QUIC) |
+| 数据存储 | H2 (MySQL兼容模式) / MySQL 8.0 |
+| 基础设施 | Docker + Docker Compose + Linux TC |
 
-### 后端
-- Spring Boot 3.3.4
-- Spring Security 6 + JJWT
-- Eclipse Paho MQTT Client（TCP/TLS）
-- Spring Data JPA + H2
-- MapStruct + Lombok
+### 核心功能
 
-### 前端
-- React 18.3 + TypeScript 5.5
-- Vite 6
-- Tailwind CSS 4
-- React Router v6
-- TanStack Query 5
-- MQTT.js 5.x
-- ECharts 5.5
+- ✅ 多协议支持: TCP / TLS / QUIC，自动降级回退
+- ✅ JWT无状态认证: EMQX本地验签，无需回调后端
+- ✅ 动态ACL权限: 实时推送到EMQX Broker
+- ✅ 全链路审计: 通过EMQX Webhook统一采集
+- ✅ 数据格式转换: XML→JSON自动转换
+- ✅ 弱网模拟: Linux TC预设场景
+- ✅ 实时监控: 拓扑图 + 流量统计
 
-### Broker
-- EMQX 5.8.0
+## 2. 快速启动
 
-## 项目结构
+### 本地开发 (推荐)
+
+```bash
+# 1. 启动EMQX
+docker-compose up -d emqx
+
+# 2. 启动后端 (需要JDK 17)
+cd backend
+./mvnw spring-boot:run
+
+# 3. 启动前端 (需要Node.js 18+)
+cd frontend
+npm install
+npm run dev
+```
+
+访问 http://localhost:5173
+
+### Docker一键启动
+
+```bash
+# Windows
+scripts\start.bat
+
+# Linux/Mac
+docker-compose up -d --build
+```
+
+访问 http://localhost:3000
+
+## 3. 演示账号
+
+| 账号 | 密码 | 角色 | 所属域 |
+|------|------|------|--------|
+| admin | admin123 | 管理员 | 管理域 |
+| producer_swu | 123456 | 生产者 | 医疗域 |
+| consumer_social | 123456 | 消费者 | 政务域 |
+| consumer_c | 123456 | 消费者 | 企业域 |
+
+## 4. 演示流程
+
+### 阶段一: 数据发布
+1. 以 `producer_swu` 登录
+2. 进入"数据发布"页面
+3. 选择主题 `/cross_domain/medical/hosp_swu/patient/update`
+4. 填写JSON消息，选择QoS 1，点击"发布"
+
+### 阶段二: 管理端监控
+1. 以 `admin` 登录
+2. 查看"监控大盘"：拓扑图、流量统计、协议标识
+3. 查看"审计日志"：发布记录
+
+### 阶段三: 数据订阅
+1. 以 `consumer_social` 登录
+2. 进入"数据订阅"页面
+3. 选择 `/cross_domain/medical/#`，点击"开始监听"
+4. 实时接收消息
+
+### 阶段四: 安全拦截 + 动态ACL
+1. `consumer_social` 尝试发布消息 → 被ACL拦截 → 审计日志标红
+2. `admin` 在"ACL规则管理"为 `consumer_c` 添加订阅权限
+3. `consumer_c` 即可订阅接收消息
+
+## 5. H2 → MySQL 迁移
+
+参见 [docs/migration-to-mysql.md](docs/migration-to-mysql.md)
+
+## 6. 项目结构
 
 ```
 cross-domain-exchange/
-├── backend/          # Maven Spring Boot 项目
-├── frontend/         # React + Vite 项目
-├── docker-compose.yml
-├── emqx/             # emqx.conf、acl.conf、rule-engine 规则
-├── scripts/          # tc弱网脚本、QUIC对比测试脚本
-├── docs/             # 文档目录
-│   └── TEST_STEPS.md # 详细测试步骤文档
-└── README.md
+├── backend/           # Spring Boot 后端
+│   └── src/main/java/com/cde/
+│       ├── controller/    # REST API控制器
+│       ├── service/       # 业务服务(接口+实现)
+│       ├── mapper/        # MyBatis-Plus映射
+│       ├── entity/        # 数据实体
+│       ├── mqtt/          # MQTT客户端 + EMQX API
+│       └── security/      # JWT认证
+├── frontend/          # React 前端
+│   └── src/
+│       ├── pages/         # 9个功能页面
+│       ├── layouts/       # Ant Design布局
+│       ├── services/      # API封装
+│       └── contexts/      # 认证上下文
+├── emqx/              # EMQX配置
+├── scripts/           # 启动脚本、弱网模拟
+├── docs/              # 文档
+└── docker-compose.yml # 容器编排
 ```
-
-## 快速开始
-
-### 前置要求
-
-- Java 17+ ✅ (已安装: OpenJDK 17.0.17)
-- Node.js 18+ ✅ (已安装: v24.13.1)
-- Maven 3.6+ (项目已包含 Maven Wrapper，无需单独安装)
-- Docker & Docker Compose（可选，用于运行EMQX）
-
-### Docker 安装说明
-
-如果您需要使用 Docker 运行 EMQX，请按照以下方式之一安装 Docker Desktop：
-
-**方式1：使用 winget 安装（推荐）**
-```powershell
-winget install Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
-```
-
-**方式2：手动下载安装**
-访问 https://www.docker.com/products/docker-desktop/ 下载并安装 Docker Desktop for Windows
-
-安装完成后，请重启电脑并启动 Docker Desktop。
-
-### 一键启动（推荐）
-
-请按照以下步骤在本机环境一键启动项目：
-
-#### 步骤1：检查环境
-
-```bash
-# 检查Java版本
-java -version
-
-# 检查Maven Wrapper（项目已包含）
-cd backend
-.\mvnw.cmd --version
-
-# 检查Node.js版本
-node -v
-
-# 检查npm版本
-npm -v
-
-# 检查Docker（如果使用Docker运行EMQX）
-docker -v
-docker-compose -v
-```
-
-#### 步骤2：启动EMQX Broker
-
-**方式A：使用Docker Compose（最简单）**
-
-```bash
-# 在项目根目录执行
-docker-compose up -d
-
-# 查看EMQX启动状态
-docker-compose ps
-
-# 查看EMQX日志
-docker-compose logs -f emqx
-```
-
-**方式B：使用Docker单独启动**
-
-```bash
-# 拉取并启动EMQX
-docker run -d --name emqx \
-  -p 1883:1883 \
-  -p 8883:8883 \
-  -p 14567:14567 \
-  -p 18083:18083 \
-  emqx/emqx:5.8.0
-
-# 确认容器运行
-docker ps
-```
-
-等待30-60秒，直到EMQX完全启动。可以通过访问 http://localhost:18083 验证（默认账号admin/public）。
-
-#### 步骤3：启动后端服务
-
-```bash
-# 进入后端目录
-cd backend
-
-# 编译项目（使用 Maven Wrapper）
-.\mvnw.cmd clean compile -DskipTests
-
-# 启动后端服务（使用 Maven Wrapper）
-.\mvnw.cmd spring-boot:run
-```
-
-后端服务将在 http://localhost:8080 启动。
-
-看到以下日志表示启动成功：
-```
-Started CrossDomainExchangeApplication in X.XXX seconds
-```
-
-#### 步骤4：启动前端服务
-
-打开一个新的终端窗口：
-
-```bash
-# 进入前端目录
-cd frontend
-
-# 安装依赖
-npm install
-
-# 如果网络较慢，使用淘宝镜像
-npm install --registry=https://registry.npmmirror.com
-
-# 启动前端开发服务器
-npm run dev
-```
-
-前端服务将在 http://localhost:5173 启动。
-
-#### 步骤5：访问系统
-
-1. 打开浏览器访问：http://localhost:5173
-2. 使用测试账号登录：
-   - 管理员：`admin` / `admin123`
-   - 普通用户：`user1` / `user123`
-3. 开始使用系统！
-
-## 详细测试步骤
-
-完整的测试步骤文档请查看：[docs/TEST_STEPS.md](./docs/TEST_STEPS.md)
-
-该文档包含：
-- 环境准备详细说明
-- EMQX部署验证
-- 后端和前端服务启动验证
-- 完整的功能测试步骤（登录、MQTT连接、消息发布、监控等）
-- 性能测试指南
-- 故障排查指南
-- 测试记录模板
-
-## 演示步骤
-
-### 1. 访问系统
-
-打开浏览器访问 http://localhost:5173
-
-### 2. 登录系统
-
-使用以下测试账号登录：
-
-- 管理员：`admin` / `admin123`
-- 用户1（域1）：`user1` / `user123`
-- 用户2（域2）：`user2` / `user123`
-- 用户3（域3）：`user3` / `user123`
-- 用户4（域4）：`user4` / `user123`
-
-### 3. 连接MQTT
-
-在仪表盘页面点击"连接TCP"或"连接TLS"按钮建立MQTT连接
-
-### 4. 发布消息
-
-1. 选择一个主题
-2. 选择QoS级别（0/1/2）
-3. 输入消息内容
-4. 点击"发布消息"
-
-### 5. 查看监控
-
-- 查看实时消息流量、延迟、成功率图表
-- 查看跨域数据流转拓扑图
-- 查看最近消息列表
-
-## 功能特性
-
-### 核心功能
-- ✅ MQTT协议发布订阅
-- ✅ 多安全域数据交换
-- ✅ 跨域主题路由转发
-- ✅ ACL权限控制
-- ✅ TLS端到端加密
-- ✅ MQTT over QUIC支持
-- ✅ 消息持久化
-- ✅ QoS 0/1/2支持
-- ✅ 智能重试机制
-- ✅ 可视化监控仪表盘
-- ✅ REST API接口
-- ✅ JWT登录认证
-- ✅ QUIC/TCP协议切换
-
-### 弱网模拟（需要Docker）
-使用tc/netem模拟高延迟、高丢包、抖动弱网环境
-
-### QUIC vs TCP性能对比
-- 延迟对比
-- 吞吐量对比
-- 丢包率对比
-
-## API文档
-
-### 认证接口
-
-#### 登录
-```
-POST /api/auth/login
-Content-Type: application/json
-
-{
-  "username": "admin",
-  "password": "admin123"
-}
-```
-
-### 主题接口
-
-#### 获取所有主题
-```
-GET /api/topics
-Authorization: Bearer <token>
-```
-
-#### 创建主题
-```
-POST /api/topics
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "topicName": "domain-1/test",
-  "sourceDomain": "domain-1",
-  "description": "测试主题",
-  "isCrossDomain": false,
-  "qos": 1,
-  "retained": false
-}
-```
-
-### MQTT接口
-
-#### 连接MQTT
-```
-POST /api/mqtt/connect?protocol=TCP
-Authorization: Bearer <token>
-```
-
-#### 发布消息
-```
-POST /api/mqtt/publish?topic=domain-1/test&payload=hello&qos=1
-Authorization: Bearer <token>
-```
-
-#### 订阅主题
-```
-POST /api/mqtt/subscribe?topic=domain-1/test&qos=1
-Authorization: Bearer <token>
-```
-
-### 监控接口
-
-#### 获取概览指标
-```
-GET /api/metrics/overview
-Authorization: Bearer <token>
-```
-
-#### 获取最近消息
-```
-GET /api/metrics/messages?limit=20
-Authorization: Bearer <token>
-```
-
-## EMQX管理界面
-
-访问 http://localhost:18083 进入EMQX Dashboard
-
-默认账号：`admin` / `public`
-
-## QUIC vs TCP性能对比截图
-
-![QUIC vs TCP性能对比](./docs/quic-vs-tcp-comparison.png)
-
-## 开发说明
-
-### 后端开发
-
-```bash
-cd backend
-
-# 编译
-.\mvnw.cmd clean compile
-
-# 运行测试
-.\mvnw.cmd test
-
-# 打包
-.\mvnw.cmd clean package
-```
-
-### 前端开发
-
-```bash
-cd frontend
-
-# 安装依赖
-npm install
-
-# 开发模式
-npm run dev
-
-# 构建生产版本
-npm run build
-```
-
-## 常见问题
-
-### 1. MQTT连接失败
-- 检查EMQX是否正常启动
-- 检查端口1883/8883/14567是否被占用
-- 检查防火墙设置
-
-### 2. 前端无法访问后端API
-- 检查后端服务是否启动
-- 检查CORS配置
-- 检查浏览器控制台错误信息
-
-### 3. 数据库访问问题
-- H2数据库仅在内存中，重启后数据丢失
-- 如需持久化，可修改配置使用MySQL
-
-## 许可证
-
-MIT License
-
-## 作者
-
-cross-domain-exchange 项目开发团队
