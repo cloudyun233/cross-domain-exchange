@@ -1,6 +1,8 @@
 package com.cde.security;
 
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -12,10 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * JWT工具类 (论文4.2.1: 无状态认证机制)
- * 生成的JWT令牌同时用于:
- * 1. Spring Boot REST API认证
- * 2. EMQX MQTT连接认证 (作为CONNECT报文的password字段)
+ * JWT utility for backend login and broker authentication.
  */
 @Component
 public class JwtUtil {
@@ -36,10 +35,6 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    /**
-     * 生成JWT令牌
-     * Payload: clientId, domainCode, roleType, exp
-     */
     public String generateToken(String clientId, String domainCode, String roleType) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("clientId", clientId);
@@ -78,23 +73,6 @@ public class JwtUtil {
 
     public long getExpirationMs() {
         return expiration;
-    }
-
-    public String generateBridgeToken() {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("clientId", "nanomq-bridge");
-        claims.put("domainCode", "admin");
-        claims.put("roleType", "admin");
-
-        long bridgeExpiration = 10L * 365 * 24 * 60 * 60 * 1000;
-
-        return Jwts.builder()
-                .claims(claims)
-                .subject("nanomq-bridge")
-                .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + bridgeExpiration))
-                .signWith(getSigningKey())
-                .compact();
     }
 
     private Claims getClaims(String token) {

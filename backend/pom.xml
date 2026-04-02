@@ -22,8 +22,14 @@
         <java.version>17</java.version>
         <jjwt.version>0.12.3</jjwt.version>
         <mybatis-plus.version>3.5.5</mybatis-plus.version>
-        <paho.version>1.2.5</paho.version>
     </properties>
+
+    <repositories>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
 
     <dependencies>
         <!-- Spring Boot Starters -->
@@ -85,11 +91,18 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Eclipse Paho MQTT Client -->
+        <!-- NanoSDK Java binding for MQTT over QUIC/TLS/TCP -->
         <dependency>
-            <groupId>org.eclipse.paho</groupId>
-            <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
-            <version>${paho.version}</version>
+            <groupId>com.github.nanomq</groupId>
+            <artifactId>nanosdk-java</artifactId>
+            <version>main-SNAPSHOT</version>
+        </dependency>
+
+        <!-- JNA for native NanoSDK TLS configuration -->
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+            <version>5.12.1</version>
         </dependency>
 
         <!-- Jackson XML Support -->
@@ -123,6 +136,20 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.1</version>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.38</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

@@ -29,9 +29,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        String header = request.getHeader("Authorization");
-        if (StringUtils.hasText(header) && header.startsWith("Bearer ")) {
-            String token = header.substring(7);
+        String token = resolveToken(request);
+        if (StringUtils.hasText(token)) {
             if (jwtUtil.validateToken(token)) {
                 String clientId = jwtUtil.getClientIdFromToken(token);
                 String roleType = jwtUtil.getRoleTypeFromToken(token);
@@ -46,5 +45,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private String resolveToken(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        if (StringUtils.hasText(header) && header.startsWith("Bearer ")) {
+            return header.substring(7);
+        }
+
+        String queryToken = request.getParameter("token");
+        if (StringUtils.hasText(queryToken)) {
+            return queryToken;
+        }
+
+        return request.getParameter("access_token");
     }
 }

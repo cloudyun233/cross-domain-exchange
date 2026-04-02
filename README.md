@@ -2,7 +2,7 @@
 
 ## 1. 系统概述
 
-本系统是一个基于 MQTT 发布/订阅架构的跨域数据安全交换平台，核心由 EMQX 5.x 作为消息引擎，Spring Boot 3.x 作为业务逻辑层，React 18 + Ant Design v5 作为管理前端。
+本系统是一个基于 MQTT 发布/订阅架构的跨域数据安全交换平台，后端通过 NanoSDK 直连 EMQX，采用 QUIC 优先、TLS/TCP 回退的传输策略；Spring Boot 3.x 负责业务逻辑与 SSE 推送，React 18 + Ant Design v5 作为管理前端。
 
 ### 技术栈
 
@@ -10,16 +10,16 @@
 |------|---------|
 | 表现层 | React 18 + Ant Design v5 + ECharts 5.x |
 | 业务逻辑层 | Spring Boot 3.x + MyBatis-Plus + JWT |
-| 消息引擎层 | EMQX 5.8.0 (TCP/TLS/QUIC) |
+| 消息引擎层 | EMQX 5.x (TCP/TLS/QUIC) |
 | 数据存储 | H2 (MySQL兼容模式) / MySQL 8.0 |
 | 基础设施 | Docker + Docker Compose + Linux TC |
 
 ### 核心功能
 
-- ✅ 多协议支持: TCP / TLS / QUIC，自动降级回退
-- ✅ JWT无状态认证: EMQX本地验签，无需回调后端
-- ✅ 动态ACL权限: 实时推送到EMQX Broker
-- ✅ 全链路审计: 通过EMQX Webhook统一采集
+- ✅ 多协议支持: QUIC 优先，TLS / TCP 自动回退
+- ✅ JWT登录态与Broker鉴权分离: 后端签发登录态 JWT，Broker 侧使用服务账号 JWT 连接
+- ✅ 动态ACL权限: 后端校验后同步到 EMQX Broker
+- ✅ 全链路审计: 后端审计日志 + EMQX Webhook 统一采集
 - ✅ 数据格式转换: XML→JSON自动转换
 - ✅ 弱网模拟: Linux TC预设场景
 - ✅ 实时监控: 拓扑图 + 流量统计
@@ -103,7 +103,7 @@ cross-domain-exchange/
 │       ├── service/       # 业务服务(接口+实现)
 │       ├── mapper/        # MyBatis-Plus映射
 │       ├── entity/        # 数据实体
-│       ├── mqtt/          # MQTT客户端 + EMQX API
+│       ├── mqtt/          # NanoSDK MQTT代理 + EMQX HTTP API
 │       └── security/      # JWT认证
 ├── frontend/          # React 前端
 │   └── src/

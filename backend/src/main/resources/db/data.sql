@@ -1,39 +1,24 @@
--- ============================================
--- 演示预设数据 (对齐需求文档演示流程)
--- 密码统一使用 BCrypt 加密
--- ============================================
+-- Demo seed data for the cross-domain exchange project.
+-- Password hashes are BCrypt and match the demo credentials in README.md.
 
--- 安全域
-INSERT INTO sys_domain (domain_code, domain_name, status) VALUES
-('admin',      '管理域',   1),
-('medical',    '医疗域',   1),
-('gov',        '政务域',   1),
-('enterprise', '企业域',   1);
+INSERT INTO sys_domain (id, domain_code, domain_name, status) VALUES
+  (1, 'admin', 'Administration Domain', 1),
+  (2, 'medical', 'Medical Domain', 1),
+  (3, 'gov', 'Government Domain', 1),
+  (4, 'enterprise', 'Enterprise Domain', 1);
 
--- 用户 (密码: admin123 和 123456 的BCrypt哈希)
--- admin123 -> $2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6CQmSRFN.auW8G2KOcA1Kl60W
--- 123456  -> $2a$10$Wv1FvELwQqOa9Y3f1NxOb.oWGHlRVOq4Kf7KY1qpXh7KIi6vKYpHe
+-- admin / admin123
+-- producer_swu / 123456
+-- consumer_social / 123456
+-- consumer_c / 123456
 INSERT INTO sys_user (domain_id, client_id, password_hash, role_type) VALUES
-(1, 'admin',           '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6CQmSRFN.auW8G2KOcA1Kl60W', 'admin'),
-(2, 'producer_swu',    '$2a$10$Wv1FvELwQqOa9Y3f1NxOb.oWGHlRVOq4Kf7KY1qpXh7KIi6vKYpHe', 'producer'),
-(3, 'consumer_social', '$2a$10$Wv1FvELwQqOa9Y3f1NxOb.oWGHlRVOq4Kf7KY1qpXh7KIi6vKYpHe', 'consumer'),
-(4, 'consumer_c',      '$2a$10$Wv1FvELwQqOa9Y3f1NxOb.oWGHlRVOq4Kf7KY1qpXh7KIi6vKYpHe', 'consumer');
+  (1, 'admin',           '$2a$10$sZicYQ9PA1ouwJc5uGRjOOn4NTfCj6nqmbaJ/6LJbwL0T8B/R1Gle', 'admin'),
+  (2, 'producer_swu',    '$2a$10$bxzESBSX/icH5EonWyrbwubwAx3WxtoGhNxAqT2JQmhrQ3nmovpzO', 'producer'),
+  (3, 'consumer_social', '$2a$10$bxzESBSX/icH5EonWyrbwubwAx3WxtoGhNxAqT2JQmhrQ3nmovpzO', 'consumer'),
+  (4, 'consumer_c',      '$2a$10$bxzESBSX/icH5EonWyrbwubwAx3WxtoGhNxAqT2JQmhrQ3nmovpzO', 'consumer');
 
--- ACL规则 (对齐需求文档演示流程)
--- producer_swu: 只能发布到医疗域主题
 INSERT INTO sys_topic_acl (client_id, topic_filter, action, access_type) VALUES
-('producer_swu', '/cross_domain/medical/hosp_swu/#', 'publish', 'allow');
-
--- consumer_social: 只能订阅医疗域主题
-INSERT INTO sys_topic_acl (client_id, topic_filter, action, access_type) VALUES
-('consumer_social', '/cross_domain/medical/#', 'subscribe', 'allow');
-
--- admin: 可订阅所有主题(全域监控)
-INSERT INTO sys_topic_acl (client_id, topic_filter, action, access_type) VALUES
-('admin', '/cross_domain/#', 'all', 'allow');
-
--- consumer_c: 初始无权限 (用于演示动态ACL添加)
-
--- 默认兜底拒绝策略 (论文4.2.3: 默认拒绝所有未授权访问)
-INSERT INTO sys_topic_acl (client_id, topic_filter, action, access_type) VALUES
-('*', '#', 'all', 'deny');
+  ('producer_swu', '/cross_domain/medical/hosp_swu/#', 'publish', 'allow'),
+  ('consumer_social', '/cross_domain/medical/#', 'subscribe', 'allow'),
+  ('admin', '/cross_domain/#', 'all', 'allow'),
+  ('*', '#', 'all', 'deny');
