@@ -212,16 +212,16 @@ public class MqttClientService {
 
     private AcquiredTransport openTlsTransport() throws Exception {
         String url = "tls+tcp://" + brokerHost + ":" + tlsPort;
-        NanoSdkTlsConfig config = NanoSdkTlsConfig.insecureClient(brokerHost);
-        MqttClientSocket socket = new MqttClientSocket();
-        try {
-            config.applyTo(socket);
-            socket.dial(url);
-            return new AcquiredTransport(socket, config, TransportProtocol.TLS);
-        } catch (Exception e) {
-            closeQuietly(socket);
-            closeQuietly(config);
-            throw e;
+        try (NanoSdkTlsConfig config = NanoSdkTlsConfig.insecureClient(brokerHost)) {
+            MqttClientSocket socket = new MqttClientSocket();
+            try {
+                config.applyTo(socket);
+                socket.dial(url);
+                return new AcquiredTransport(socket, config, TransportProtocol.TLS);
+            } catch (Exception e) {
+                closeQuietly(socket);
+                throw e;
+            }
         }
     }
 
