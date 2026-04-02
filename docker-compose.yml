@@ -15,38 +15,11 @@ services:
       - emqx-log:/opt/emqx/log
     environment:
       - EMQX_NAME=cross-domain-emqx
-    networks:
-      cde-net:
-        aliases:
-          - emqx
     healthcheck:
       test: ["CMD", "/opt/emqx/bin/emqx_ctl", "status"]
       interval: 15s
       timeout: 5s
       retries: 5
-
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: cross-domain-app
-    ports:
-      - "8080:8080"
-    environment:
-      - SPRING_PROFILES_ACTIVE=default
-      - MQTT_BROKER_HOST=emqx
-      - MQTT_BROKER_QUIC_PORT=14567
-      - EMQX_API_BASE_URL=http://emqx:18083/api/v5
-    depends_on:
-      emqx:
-        condition: service_healthy
-    networks:
-      - cde-net
-
-networks:
-  cde-net:
-    name: cross-domain-network
-    driver: bridge
 
 volumes:
   emqx-data:

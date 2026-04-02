@@ -2,17 +2,17 @@
 
 ## 1. 系统概述
 
-本系统是一个基于 MQTT 发布/订阅架构的跨域数据安全交换平台，后端通过 NanoSDK 直连 EMQX，采用 QUIC 优先、TLS/TCP 回退的传输策略；Spring Boot 3.x 负责业务逻辑与 SSE 推送，React 18 + Ant Design v5 作为管理前端。
+本系统是一个基于 MQTT 发布/订阅架构的跨域数据安全交换平台，后端通过 NanoSDK 直连 EMQX，采用 QUIC 优先、TLS/TCP 回退的传输策略；Spring Boot 3.5.13 负责业务逻辑，React 18 + Ant Design v5 + Vite 作为管理前端。
 
 ### 技术栈
 
 | 层级 | 技术选型 |
 |------|---------|
-| 表现层 | React 18 + Ant Design v5 + ECharts 5.x |
-| 业务逻辑层 | Spring Boot 3.x + MyBatis-Plus + JWT |
-| 消息引擎层 | EMQX 5.x (TCP/TLS/QUIC) |
-| 数据存储 | H2 (MySQL兼容模式) / MySQL 8.0 |
-| 基础设施 | Docker + Docker Compose + Linux TC |
+| 表现层 | React 18.3.1 + Ant Design 5.20.0 + ECharts 5.5.1 + Vite 6.0.1 + TypeScript 5.5.4 |
+| 业务逻辑层 | Spring Boot 3.5.13 + MyBatis-Plus 3.5.5 + JWT 0.12.3 |
+| 消息引擎层 | EMQX Enterprise 5.10.3 (TCP/TLS/QUIC) |
+| 数据存储 | H2 (默认) / MySQL 8.0 |
+| 基础设施 | Docker + Docker Compose |
 
 ### 核心功能
 
@@ -20,21 +20,21 @@
 - ✅ JWT登录态与Broker鉴权分离: 后端签发登录态 JWT，Broker 侧使用服务账号 JWT 连接
 - ✅ 动态ACL权限: 后端校验后同步到 EMQX Broker
 - ✅ 全链路审计: 后端审计日志 + EMQX Webhook 统一采集
-- ✅ 数据格式转换: XML→JSON自动转换
+- ✅ 数据格式转换: XML↔JSON自动转换
 - ✅ 弱网模拟: Linux TC预设场景
 - ✅ 实时监控: 拓扑图 + 流量统计
 
 ## 2. 快速启动
 
-### 本地开发 (推荐)
+### 本地开发
 
 ```bash
 # 1. 启动EMQX
-docker-compose up -d emqx
+docker-compose up -d
 
 # 2. 启动后端 (需要JDK 17)
 cd backend
-./mvnw spring-boot:run
+.\mvnw.cmd spring-boot:run
 
 # 3. 启动前端 (需要Node.js 18+)
 cd frontend
@@ -42,19 +42,9 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:5173
-
-### Docker一键启动
-
-```bash
-# Windows
-scripts\start.bat
-
-# Linux/Mac
-docker-compose up -d --build
-```
-
-访问 http://localhost:3000
+- 前端访问: http://localhost:5173
+- 后端API: http://localhost:8080
+- EMQX管理控制台: http://localhost:18083
 
 ## 3. 演示账号
 
@@ -97,22 +87,28 @@ docker-compose up -d --build
 
 ```
 cross-domain-exchange/
-├── backend/           # Spring Boot 后端
-│   └── src/main/java/com/cde/
-│       ├── controller/    # REST API控制器
-│       ├── service/       # 业务服务(接口+实现)
-│       ├── mapper/        # MyBatis-Plus映射
-│       ├── entity/        # 数据实体
-│       ├── mqtt/          # NanoSDK MQTT代理 + EMQX HTTP API
-│       └── security/      # JWT认证
-├── frontend/          # React 前端
+├── backend/              # Spring Boot 后端
+│   ├── src/main/java/com/cde/
+│   │   ├── config/       # 配置类
+│   │   ├── controller/   # REST API控制器
+│   │   ├── dto/          # 数据传输对象
+│   │   ├── entity/       # 数据实体
+│   │   ├── mapper/       # MyBatis-Plus映射
+│   │   ├── mqtt/         # NanoSDK MQTT代理 + EMQX HTTP API
+│   │   ├── security/     # JWT认证
+│   │   └── service/      # 业务服务(接口+实现 + 数据转换)
+│   └── src/main/resources/
+│       ├── db/           # 数据库初始化脚本
+│       └── application*.yml # 配置文件
+├── frontend/             # React 前端
 │   └── src/
-│       ├── pages/         # 9个功能页面
-│       ├── layouts/       # Ant Design布局
-│       ├── services/      # API封装
-│       └── contexts/      # 认证上下文
-├── emqx/              # EMQX配置
-├── scripts/           # 启动脚本、弱网模拟
-├── docs/              # 文档
-└── docker-compose.yml # 容器编排
+│       ├── components/   # 通用组件
+│       ├── contexts/     # 认证上下文
+│       ├── layouts/      # Ant Design布局
+│       ├── pages/        # 9个功能页面 (登录、监控大盘、数据发布、数据订阅、ACL管理、审计日志、域管理、客户端管理、弱网模拟)
+│       └── services/     # API封装
+├── emqx/                 # EMQX配置
+├── scripts/              # 启动脚本、弱网模拟
+├── docs/                 # 文档
+└── docker-compose.yml    # 容器编排 (仅EMQX)
 ```
