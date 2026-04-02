@@ -1,147 +1,170 @@
 package com.cde.mqtt;
 
+import com.cde.security.JwtUtil;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.paho.client.mqttv3.*;
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
+import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
+import org.eclipse.paho.client.mqttv3.MqttClient;
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
 /**
- * MQTT客户端服务 (所有MQTT连接由后端统一管控)
- * QUIC→TLS→TCP降级策略 (需求文档1.2)
+ * Centralized MQTT client used by the backend to proxy publish/subscribe
+ * operations to EMQX.
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class MqttClientService {
+
+    private final JwtUtil jwtUtil;
 
     @Value("${mqtt.broker.host:localhost}")
     private String brokerHost;
+
     @Value("${mqtt.broker.tcp-port:1883}")
     private int tcpPort;
+
     @Value("${mqtt.broker.tls-port:8883}")
     private int tlsPort;
-    @Value("${mqtt.broker.quic-port:14567}")
-    private int quicPort;
+
     @Value("${mqtt.broker.client-id-prefix:cde-backend}")
     private String clientIdPrefix;
 
+    @Value("${mqtt.broker.username:admin}")
+    private String brokerUsername;
+
+    @Value("${mqtt.broker.domain-code:admin}")
+    private String brokerDomainCode;
+
+    @Value("${mqtt.broker.role-type:admin}")
+    private String brokerRoleType;
+
     private MqttClient mqttClient;
-    private String activeProtocol = "未连接";
+    private String activeProtocol = "DISCONNECTED";
     private final Map<String, BiConsumer<String, String>> subscriptionCallbacks = new ConcurrentHashMap<>();
+    private final Map<String, Integer> subscriptionQos = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void init() {
         connectWithFallback();
     }
 
-    /**
-     * QUIC→TLS→TCP降级连接策略
-     */
     private void connectWithFallback() {
-        // 注: Paho客户端不原生支持QUIC，QUIC由EMQX侧处理
-        // 这里实现 TLS→TCP 降级
-        String clientId = clientIdPrefix + "-" + System.currentTimeMillis();
+        disconnectQuietly();
 
-        // 尝试TLS
-        try {
-            String tlsUrl = "ssl://" + brokerHost + ":" + tlsPort;
-            mqttClient = new MqttClient(tlsUrl, clientId, new MemoryPersistence());
-            MqttConnectOptions opts = createOptions();
-            mqttClient.connect(opts);
-            activeProtocol = "TLS";
-            setupCallbackHandler();
-            log.info("MQTT已通过TLS连接: {}", tlsUrl);
+        String clientId = clientIdPrefix + "-" + System.currentTimeMillis();
+        if (connect("ssl://" + brokerHost + ":" + tlsPort, clientId, "TLS")) {
             return;
-        } catch (Exception e) {
-            log.warn("TLS连接失败，尝试TCP回退: {}", e.getMessage());
+        }
+        if (connect("tcp://" + brokerHost + ":" + tcpPort, clientId, "TCP")) {
+            return;
         }
 
-        // 回退到TCP
+        activeProtocol = "DISCONNECTED";
+        log.warn("MQTT connection failed for all fallback protocols");
+    }
+
+    private boolean connect(String brokerUrl, String clientId, String protocol) {
         try {
-            String tcpUrl = "tcp://" + brokerHost + ":" + tcpPort;
-            mqttClient = new MqttClient(tcpUrl, clientId, new MemoryPersistence());
-            MqttConnectOptions opts = createOptions();
-            mqttClient.connect(opts);
-            activeProtocol = "TCP";
-            setupCallbackHandler();
-            log.info("MQTT已通过TCP连接(TLS不可用已回退): {}", tcpUrl);
+            MqttClient client = new MqttClient(brokerUrl, clientId, new MemoryPersistence());
+            client.setCallback(createCallback());
+            client.connect(createOptions());
+            mqttClient = client;
+            activeProtocol = protocol;
+            resubscribeAll();
+            log.info("MQTT connected over {}: {}", protocol, brokerUrl);
+            return true;
         } catch (Exception e) {
-            activeProtocol = "未连接";
-            log.warn("MQTT连接失败(Broker可能未启动): {}", e.getMessage());
+            log.warn("MQTT {} connection failed: {}", protocol, e.getMessage());
+            return false;
         }
     }
 
     private MqttConnectOptions createOptions() {
-        MqttConnectOptions opts = new MqttConnectOptions();
-        opts.setCleanSession(false);
-        opts.setAutomaticReconnect(true);
-        opts.setConnectionTimeout(10);
-        opts.setKeepAliveInterval(60);
-        return opts;
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setCleanSession(false);
+        options.setAutomaticReconnect(true);
+        options.setConnectionTimeout(10);
+        options.setKeepAliveInterval(60);
+        options.setUserName(brokerUsername);
+        options.setPassword(generateBrokerToken().toCharArray());
+        return options;
     }
 
-    private void setupCallbackHandler() {
-        mqttClient.setCallback(new MqttCallbackExtended() {
+    private String generateBrokerToken() {
+        return jwtUtil.generateToken(brokerUsername, brokerDomainCode, brokerRoleType);
+    }
+
+    private MqttCallbackExtended createCallback() {
+        return new MqttCallbackExtended() {
             @Override
             public void connectComplete(boolean reconnect, String serverURI) {
-                log.info("MQTT{}连接: {}", reconnect ? "重新" : "", serverURI);
+                log.info("MQTT {}connect complete: {}", reconnect ? "re" : "", serverURI);
+                resubscribeAll();
             }
+
             @Override
             public void connectionLost(Throwable cause) {
-                log.warn("MQTT连接丢失: {}", cause.getMessage());
+                String message = cause == null ? "unknown" : cause.getMessage();
+                log.warn("MQTT connection lost: {}", message);
             }
+
             @Override
             public void messageArrived(String topic, MqttMessage message) {
-                String payload = new String(message.getPayload());
-                log.debug("收到消息: topic={}, payload={}", topic, payload);
-                // 通知所有匹配的订阅回调
+                String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
                 subscriptionCallbacks.forEach((filter, callback) -> {
                     if (matchesTopic(filter, topic)) {
                         callback.accept(topic, payload);
                     }
                 });
             }
+
             @Override
-            public void deliveryComplete(IMqttDeliveryToken token) {}
-        });
+            public void deliveryComplete(IMqttDeliveryToken token) {
+                // no-op
+            }
+        };
     }
 
     public void publish(String topic, String payload, int qos) {
-        if (mqttClient == null || !mqttClient.isConnected()) {
-            log.warn("MQTT未连接，尝试重连...");
-            connectWithFallback();
-            if (mqttClient == null || !mqttClient.isConnected()) {
-                throw new RuntimeException("MQTT Broker未连接");
-            }
-        }
+        ensureConnected();
         try {
-            MqttMessage msg = new MqttMessage(payload.getBytes());
-            msg.setQos(qos);
-            mqttClient.publish(topic, msg);
+            MqttMessage message = new MqttMessage(payload.getBytes(StandardCharsets.UTF_8));
+            message.setQos(qos);
+            mqttClient.publish(topic, message);
         } catch (MqttException e) {
-            throw new RuntimeException("发布消息失败: " + e.getMessage(), e);
+            throw new RuntimeException("Failed to publish MQTT message: " + e.getMessage(), e);
         }
     }
 
     public void subscribe(String topic, int qos, BiConsumer<String, String> callback) {
         subscriptionCallbacks.put(topic, callback);
-        if (mqttClient != null && mqttClient.isConnected()) {
-            try {
-                mqttClient.subscribe(topic, qos);
-                log.info("已订阅主题: {}, QoS={}", topic, qos);
-            } catch (MqttException e) {
-                log.error("订阅失败: {}", e.getMessage());
-            }
+        subscriptionQos.put(topic, qos);
+        ensureConnected();
+        try {
+            mqttClient.subscribe(topic, qos);
+            log.info("Subscribed to topic {}, qos={}", topic, qos);
+        } catch (MqttException e) {
+            throw new RuntimeException("Failed to subscribe topic " + topic + ": " + e.getMessage(), e);
         }
     }
 
-    public String getActiveProtocol() { return activeProtocol; }
+    public String getActiveProtocol() {
+        return activeProtocol;
+    }
 
     public boolean isConnected() {
         return mqttClient != null && mqttClient.isConnected();
@@ -149,19 +172,65 @@ public class MqttClientService {
 
     @PreDestroy
     public void destroy() {
+        disconnectQuietly();
+    }
+
+    private void ensureConnected() {
         if (mqttClient != null && mqttClient.isConnected()) {
-            try { mqttClient.disconnect(); } catch (MqttException e) { /* ignore */ }
+            return;
+        }
+        log.warn("MQTT client disconnected, reconnecting");
+        connectWithFallback();
+        if (mqttClient == null || !mqttClient.isConnected()) {
+            throw new RuntimeException("MQTT broker is not connected");
+        }
+    }
+
+    private void resubscribeAll() {
+        if (mqttClient == null || !mqttClient.isConnected()) {
+            return;
+        }
+        subscriptionCallbacks.forEach((topic, callback) -> {
+            try {
+                mqttClient.subscribe(topic, subscriptionQos.getOrDefault(topic, 1));
+            } catch (MqttException e) {
+                log.warn("Failed to resubscribe topic {}: {}", topic, e.getMessage());
+            }
+        });
+    }
+
+    private void disconnectQuietly() {
+        if (mqttClient == null) {
+            return;
+        }
+        try {
+            if (mqttClient.isConnected()) {
+                mqttClient.disconnect();
+            }
+            mqttClient.close();
+        } catch (MqttException e) {
+            log.debug("Ignoring MQTT disconnect error: {}", e.getMessage());
         }
     }
 
     private boolean matchesTopic(String filter, String topic) {
-        if (filter.equals(topic) || "#".equals(filter)) return true;
-        String[] fp = filter.split("/"), tp = topic.split("/");
-        for (int i = 0; i < fp.length; i++) {
-            if ("#".equals(fp[i])) return true;
-            if (i >= tp.length) return false;
-            if (!"+".equals(fp[i]) && !fp[i].equals(tp[i])) return false;
+        if (filter.equals(topic) || "#".equals(filter)) {
+            return true;
         }
-        return fp.length == tp.length;
+
+        String[] filterParts = filter.split("/");
+        String[] topicParts = topic.split("/");
+        for (int i = 0; i < filterParts.length; i++) {
+            if ("#".equals(filterParts[i])) {
+                return true;
+            }
+            if (i >= topicParts.length) {
+                return false;
+            }
+            if (!"+".equals(filterParts[i]) && !filterParts[i].equals(topicParts[i])) {
+                return false;
+            }
+        }
+        return filterParts.length == topicParts.length;
     }
 }

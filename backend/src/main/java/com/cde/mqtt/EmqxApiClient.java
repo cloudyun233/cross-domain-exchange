@@ -3,15 +3,23 @@ package com.cde.mqtt;
 import com.cde.entity.SysTopicAcl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
- * EMQX HTTP API 客户端
- * 职责: ACL规则实时推送 + 监控数据采集
+ * EMQX HTTP API client.
  */
 @Slf4j
 @Component
@@ -19,25 +27,26 @@ public class EmqxApiClient {
 
     @Value("${emqx.api.base-url:http://localhost:18083/api/v5}")
     private String baseUrl;
+
     @Value("${emqx.api.username:admin}")
     private String username;
+
     @Value("${emqx.api.password:public}")
     private String password;
 
     private final RestTemplate restTemplate = new RestTemplate();
+    private volatile String apiToken;
 
-    private HttpHeaders createHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBasicAuth(username, password);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return headers;
+    public boolean isApiReady() {
+        try {
+            getApiToken(false);
+            return true;
+        } catch (Exception e) {
+            log.debug("EMQX API is not ready yet: {}", e.getMessage());
+            return false;
+        }
     }
 
-    // ==================== ACL推送 ====================
-
-    /**
-     * 推送单条ACL规则到EMQX
-     */
     public void pushAclRule(SysTopicAcl acl) {
         try {
             String url = baseUrl + "/authorization/sources/built_in_database/rules/users";
@@ -49,31 +58,25 @@ public class EmqxApiClient {
                     "permission", acl.getAccessType()
             )));
 
-            HttpEntity<List<Map<String, Object>>> entity =
-                    new HttpEntity<>(List.of(rule), createHeaders());
-            restTemplate.postForEntity(url, entity, String.class);
-            log.info("ACL规则推送成功: client={}, topic={}", acl.getClientId(), acl.getTopicFilter());
+            exchange(url, HttpMethod.POST, List.of(rule), String.class);
+            log.info("ACL pushed to EMQX: client={}, topic={}", acl.getClientId(), acl.getTopicFilter());
         } catch (Exception e) {
-            log.warn("ACL推送到EMQX失败(Broker可能未启动): {}", e.getMessage());
+            log.warn("Failed to push ACL to EMQX: {}", e.getMessage());
         }
     }
 
-    /**
-     * 全量同步ACL规则到EMQX
-     */
     public void syncAllAclRules(List<SysTopicAcl> rules) {
         try {
-            // 先清空现有规则
-            String deleteUrl = baseUrl + "/authorization/sources/built_in_database/rules/users";
+            String url = baseUrl + "/authorization/sources/built_in_database/rules/users";
             try {
-                restTemplate.exchange(deleteUrl, HttpMethod.DELETE,
-                        new HttpEntity<>(createHeaders()), String.class);
-            } catch (Exception e) { /* 忽略清空失败 */ }
+                exchange(url, HttpMethod.DELETE, null, String.class);
+            } catch (Exception e) {
+                log.debug("Ignoring EMQX ACL cleanup failure before full sync: {}", e.getMessage());
+            }
 
-            // 按clientId分组推送
             Map<String, List<Map<String, Object>>> grouped = new HashMap<>();
             for (SysTopicAcl acl : rules) {
-                grouped.computeIfAbsent(acl.getClientId(), k -> new ArrayList<>())
+                grouped.computeIfAbsent(acl.getClientId(), key -> new ArrayList<>())
                         .add(Map.of(
                                 "topic", acl.getTopicFilter(),
                                 "action", acl.getAction(),
@@ -90,29 +93,23 @@ public class EmqxApiClient {
             });
 
             if (!body.isEmpty()) {
-                String postUrl = baseUrl + "/authorization/sources/built_in_database/rules/users";
-                HttpEntity<List<Map<String, Object>>> entity = new HttpEntity<>(body, createHeaders());
-                restTemplate.postForEntity(postUrl, entity, String.class);
+                exchange(url, HttpMethod.POST, body, String.class);
             }
-            log.info("ACL全量同步成功, 共{}条规则", rules.size());
+            log.info("ACL full sync to EMQX completed, rules={}", rules.size());
         } catch (Exception e) {
-            log.warn("ACL全量同步到EMQX失败: {}", e.getMessage());
+            log.warn("Failed to sync ACL rules to EMQX: {}", e.getMessage());
         }
     }
-
-    // ==================== 监控采集 ====================
 
     @SuppressWarnings("unchecked")
     public Map<String, Object> fetchStats() {
         try {
-            HttpEntity<?> entity = new HttpEntity<>(createHeaders());
-            ResponseEntity<List> resp = restTemplate.exchange(
-                    baseUrl + "/stats", HttpMethod.GET, entity, List.class);
-            if (resp.getBody() != null && !resp.getBody().isEmpty()) {
-                return (Map<String, Object>) resp.getBody().get(0);
+            ResponseEntity<List> response = exchange(baseUrl + "/stats", HttpMethod.GET, null, List.class);
+            if (response.getBody() != null && !response.getBody().isEmpty()) {
+                return (Map<String, Object>) response.getBody().get(0);
             }
         } catch (Exception e) {
-            log.debug("获取EMQX统计失败: {}", e.getMessage());
+            log.debug("Failed to fetch EMQX stats: {}", e.getMessage());
         }
         return defaultStats();
     }
@@ -120,12 +117,10 @@ public class EmqxApiClient {
     @SuppressWarnings("unchecked")
     public Map<String, Object> fetchClients() {
         try {
-            HttpEntity<?> entity = new HttpEntity<>(createHeaders());
-            ResponseEntity<Map> resp = restTemplate.exchange(
-                    baseUrl + "/clients?limit=100", HttpMethod.GET, entity, Map.class);
-            return resp.getBody() != null ? resp.getBody() : Map.of();
+            ResponseEntity<Map> response = exchange(baseUrl + "/clients?limit=100", HttpMethod.GET, null, Map.class);
+            return response.getBody() != null ? response.getBody() : Map.of();
         } catch (Exception e) {
-            log.debug("获取EMQX客户端列表失败: {}", e.getMessage());
+            log.debug("Failed to fetch EMQX clients: {}", e.getMessage());
         }
         return Map.of("data", List.of());
     }
@@ -133,23 +128,77 @@ public class EmqxApiClient {
     @SuppressWarnings("unchecked")
     public Map<String, Object> fetchSubscriptions() {
         try {
-            HttpEntity<?> entity = new HttpEntity<>(createHeaders());
-            ResponseEntity<Map> resp = restTemplate.exchange(
-                    baseUrl + "/subscriptions?limit=200", HttpMethod.GET, entity, Map.class);
-            return resp.getBody() != null ? resp.getBody() : Map.of();
+            ResponseEntity<Map> response = exchange(baseUrl + "/subscriptions?limit=200", HttpMethod.GET, null, Map.class);
+            return response.getBody() != null ? response.getBody() : Map.of();
         } catch (Exception e) {
-            log.debug("获取EMQX订阅列表失败: {}", e.getMessage());
+            log.debug("Failed to fetch EMQX subscriptions: {}", e.getMessage());
         }
         return Map.of("data", List.of());
     }
 
+    private <T> ResponseEntity<T> exchange(String url, HttpMethod method, Object body, Class<T> responseType) {
+        try {
+            return doExchange(url, method, body, responseType, false);
+        } catch (HttpClientErrorException.Unauthorized e) {
+            return doExchange(url, method, body, responseType, true);
+        }
+    }
+
+    private <T> ResponseEntity<T> doExchange(
+            String url,
+            HttpMethod method,
+            Object body,
+            Class<T> responseType,
+            boolean forceRefreshToken
+    ) {
+        HttpEntity<?> entity = body == null
+                ? new HttpEntity<>(createHeaders(forceRefreshToken))
+                : new HttpEntity<>(body, createHeaders(forceRefreshToken));
+        return restTemplate.exchange(url, method, entity, responseType);
+    }
+
+    private HttpHeaders createHeaders(boolean forceRefreshToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(getApiToken(forceRefreshToken));
+        return headers;
+    }
+
+    @SuppressWarnings("unchecked")
+    private synchronized String getApiToken(boolean forceRefreshToken) {
+        if (!forceRefreshToken && StringUtils.hasText(apiToken)) {
+            return apiToken;
+        }
+
+        Map<String, String> request = Map.of(
+                "username", username,
+                "password", password
+        );
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<Map> response = restTemplate.exchange(
+                baseUrl + "/login",
+                HttpMethod.POST,
+                new HttpEntity<>(request, headers),
+                Map.class
+        );
+
+        Object token = response.getBody() == null ? null : response.getBody().get("token");
+        if (!(token instanceof String tokenValue) || !StringUtils.hasText(tokenValue)) {
+            throw new IllegalStateException("EMQX login did not return a token");
+        }
+
+        apiToken = tokenValue;
+        return apiToken;
+    }
+
     private Map<String, Object> defaultStats() {
-        Map<String, Object> m = new HashMap<>();
-        m.put("connections.count", 0);
-        m.put("messages.received", 0);
-        m.put("messages.sent", 0);
-        m.put("topics.count", 0);
-        m.put("subscriptions.count", 0);
-        return m;
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("connections.count", 0);
+        stats.put("messages.received", 0);
+        stats.put("messages.sent", 0);
+        stats.put("topics.count", 0);
+        stats.put("subscriptions.count", 0);
+        return stats;
     }
 }

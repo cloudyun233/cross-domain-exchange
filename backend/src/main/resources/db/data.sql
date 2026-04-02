@@ -30,7 +30,7 @@ INSERT INTO sys_topic_acl (client_id, topic_filter, action, access_type) VALUES
 
 -- admin: 可订阅所有主题(全域监控)
 INSERT INTO sys_topic_acl (client_id, topic_filter, action, access_type) VALUES
-('admin', '/cross_domain/#', 'subscribe', 'allow');
+('admin', '/cross_domain/#', 'all', 'allow');
 
 -- consumer_c: 初始无权限 (用于演示动态ACL添加)
 

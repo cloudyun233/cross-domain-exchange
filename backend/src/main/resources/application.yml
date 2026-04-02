@@ -49,6 +49,9 @@ mqtt:
     tls-port: 8883
     tcp-port: 1883
     client-id-prefix: cde-backend
+    username: admin
+    domain-code: admin
+    role-type: admin
   retry:
     max-attempts: 5
     initial-delay-ms: 1000
