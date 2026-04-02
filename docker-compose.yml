@@ -28,18 +28,25 @@ services:
 
   # NanoMQ - QUIC 代理层
   nanomq:
-    image: emqx/nanomq:latest-full
+    build:
+      context: ./nanomq
+      dockerfile: Dockerfile.bridge
     container_name: cross-domain-nanomq
     hostname: nanomq
     volumes:
       - ./nanomq/nanomq.conf:/etc/nanomq/nanomq.conf
       - nanomq-log:/var/log/nanomq
+    environment:
+      - SPRING_BACKEND_URL=http://app:8080
+      - BRIDGE_USERNAME=admin
+      - BRIDGE_PASSWORD=admin123
     depends_on:
+      app:
+        condition: service_started
       emqx:
         condition: service_healthy
     networks:
       - cde-net
-    command: ["nanomq", "start", "--conf", "/etc/nanomq/nanomq.conf"]
 
   # App - 前后端合并服务
   app:
@@ -54,8 +61,6 @@ services:
       - MQTT_BROKER_HOST=nanomq
       - EMQX_API_BASE_URL=http://emqx:18083/api/v5
     depends_on:
-      nanomq:
-        condition: service_started
       emqx:
         condition: service_healthy
     networks:
