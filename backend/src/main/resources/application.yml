@@ -41,11 +41,10 @@ jwt:
   secret: cross-domain-exchange-secret-key-2024-jwt-token-generation
   expiration: 86400000
 
-# MQTT Broker
+# MQTT Broker (连接 NanoMQ 代理层)
 mqtt:
   broker:
-    host: localhost
-    quic-port: 14567
+    host: nanomq
     tls-port: 8883
     tcp-port: 1883
     client-id-prefix: cde-backend
@@ -60,7 +59,7 @@ mqtt:
 # EMQX HTTP API
 emqx:
   api:
-    base-url: http://emqx.local:18083/api/v5
+    base-url: http://emqx:18083/api/v5
     username: admin
     password: public
   monitor:

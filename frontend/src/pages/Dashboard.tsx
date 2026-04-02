@@ -94,7 +94,7 @@ const Dashboard: React.FC = () => {
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <Card className="stat-card" hoverable>
-            <Statistic title="Broker连接数" value={stats.jvmUsedMemory || 0}
+            <Statistic title="Broker连接数" value={msgStats['connections.count'] || 0}
               prefix={<CloudServerOutlined style={{ color: '#1890ff' }} />}
               suffix="个" />
           </Card>

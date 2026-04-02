@@ -80,6 +80,23 @@ public class JwtUtil {
         return expiration;
     }
 
+    public String generateBridgeToken() {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("clientId", "nanomq-bridge");
+        claims.put("domainCode", "admin");
+        claims.put("roleType", "admin");
+
+        long bridgeExpiration = 10L * 365 * 24 * 60 * 60 * 1000;
+
+        return Jwts.builder()
+                .claims(claims)
+                .subject("nanomq-bridge")
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + bridgeExpiration))
+                .signWith(getSigningKey())
+                .compact();
+    }
+
     private Claims getClaims(String token) {
         return Jwts.parser()
                 .verifyWith(getSigningKey())
