@@ -38,7 +38,7 @@ mybatis-plus:
 
 # JWT
 jwt:
-  secret: cross-domain-exchange-secret-key-2024-jwt-token-generation
+  secret: cross-domain-exchange-secret-key-2026-jwt-token-generation
   expiration: 86400000
 
 # MQTT Broker (连接 NanoMQ 代理层)
