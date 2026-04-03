@@ -105,29 +105,19 @@ public class SubscribeServiceImpl implements SubscribeService {
     }
 
     private void cleanup(String clientId, String connectionId, String topic) {
-        // 清理emitter
-        Map<String, SseEmitter> userEmitters = emitters.get(clientId);
-        if (userEmitters != null) {
-            userEmitters.remove(connectionId);
-            if (userEmitters.isEmpty()) {
-                emitters.remove(clientId);
-            }
-        }
-
-        // 清理topic订阅关系
-        Map<String, CopyOnWriteArrayList<String>> userTopics = topicSubscribers.get(clientId);
-        if (userTopics != null) {
-            CopyOnWriteArrayList<String> connIds = userTopics.get(topic);
-            if (connIds != null) {
+        // 使用computeIfPresent确保原子性操作
+        emitters.computeIfPresent(clientId, (k, v) -> {
+            v.remove(connectionId);
+            return v.isEmpty() ? null : v;
+        });
+        
+        topicSubscribers.computeIfPresent(clientId, (k, userTopics) -> {
+            userTopics.computeIfPresent(topic, (t, connIds) -> {
                 connIds.remove(connectionId);
-                if (connIds.isEmpty()) {
-                    userTopics.remove(topic);
-                    if (userTopics.isEmpty()) {
-                        topicSubscribers.remove(clientId);
-                    }
-                }
-            }
-        }
+                return connIds.isEmpty() ? null : connIds;
+            });
+            return userTopics.isEmpty() ? null : userTopics;
+        });
     }
 
     private boolean matchesTopic(String filter, String topic) {
