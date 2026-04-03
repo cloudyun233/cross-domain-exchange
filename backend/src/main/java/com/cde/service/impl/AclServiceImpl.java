@@ -9,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -35,7 +34,6 @@ public class AclServiceImpl implements AclService {
 
     @Override
     public SysTopicAcl create(SysTopicAcl acl) {
-        acl.setCreateTime(LocalDateTime.now());
         aclMapper.insert(acl);
         // 实时推送到EMQX
         emqxApiClient.pushAclRule(acl);

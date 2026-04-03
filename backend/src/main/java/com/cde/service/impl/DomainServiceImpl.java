@@ -5,7 +5,6 @@ import com.cde.mapper.SysDomainMapper;
 import com.cde.service.DomainService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -21,7 +20,6 @@ public class DomainServiceImpl implements DomainService {
 
     @Override
     public SysDomain create(SysDomain domain) {
-        domain.setCreateTime(LocalDateTime.now());
         domainMapper.insert(domain);
         return domain;
     }

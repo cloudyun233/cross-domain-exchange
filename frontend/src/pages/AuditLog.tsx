@@ -52,7 +52,7 @@ const AuditLog: React.FC = () => {
     ['acl_deny', 'auth_fail', 'publish_fail'].includes(action);
 
   const columns = [
-    { title: '时间', dataIndex: 'createTime', width: 170,
+    { title: '时间', dataIndex: 'actionTime', width: 170,
       render: (v: string) => <Text style={{ fontSize: 12 }}>{v}</Text> },
     { title: '客户端', dataIndex: 'clientId', width: 140,
       render: (v: string) => <Tag>{v || '-'}</Tag> },

@@ -31,7 +31,7 @@ public class AuditServiceImpl implements AuditService {
         logEntry.setActionType(actionType);
         logEntry.setDetail(detail);
         logEntry.setIpAddress(ipAddress != null ? ipAddress : "0.0.0.0");
-        logEntry.setCreateTime(LocalDateTime.now());
+        logEntry.setActionTime(LocalDateTime.now());
         auditLogMapper.insert(logEntry);
 
         if (actionType.contains("deny") || actionType.contains("fail")) {
@@ -118,7 +118,7 @@ public class AuditServiceImpl implements AuditService {
         if (StringUtils.hasText(actionType)) {
             wrapper.eq(SysAuditLog::getActionType, actionType);
         }
-        wrapper.orderByDesc(SysAuditLog::getCreateTime);
+        wrapper.orderByDesc(SysAuditLog::getActionTime);
         return auditLogMapper.selectPage(new Page<>(page, size), wrapper);
     }
 }

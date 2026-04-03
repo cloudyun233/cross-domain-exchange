@@ -25,6 +25,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtUtil jwtUtil;
     private final SysUserMapper userMapper;
 
+    /**
+     * 从 clientId (username_deviceId) 中提取 username
+     */
+    private String extractUsernameFromClientId(String clientId) {
+        if (clientId == null) {
+            return "";
+        }
+        int underscoreIndex = clientId.lastIndexOf('_');
+        if (underscoreIndex > 0) {
+            return clientId.substring(0, underscoreIndex);
+        }
+        return clientId;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
@@ -32,7 +46,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = resolveToken(request);
         if (StringUtils.hasText(token)) {
             if (jwtUtil.validateToken(token)) {
-                String clientId = jwtUtil.getClientIdFromToken(token);
+                String usernameFromToken = jwtUtil.getClientIdFromToken(token);
                 String roleType = jwtUtil.getRoleTypeFromToken(token);
 
                 List<SimpleGrantedAuthority> authorities = List.of(
@@ -40,7 +54,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 );
 
                 UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(clientId, null, authorities);
+                        new UsernamePasswordAuthenticationToken(usernameFromToken, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }

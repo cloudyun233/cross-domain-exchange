@@ -15,6 +15,7 @@ import java.util.Map;
 
 /**
  * JWT utility for backend login and broker authentication.
+ * Note: JWT 载荷中仍使用 clientId 字段名以保持 EMQX 兼容性
  */
 @Component
 public class JwtUtil {
@@ -35,15 +36,15 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(keyBytes);
     }
 
-    public String generateToken(String clientId, String domainCode, String roleType) {
+    public String generateToken(String username, String domainCode, String roleType) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put("clientId", clientId);
+        claims.put("clientId", username);
         claims.put("domainCode", domainCode);
         claims.put("roleType", roleType);
 
         return Jwts.builder()
                 .claims(claims)
-                .subject(clientId)
+                .subject(username)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey())

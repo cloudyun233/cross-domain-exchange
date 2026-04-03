@@ -37,7 +37,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public LoginResponse login(LoginRequest request) {
         SysUser user = userMapper.selectOne(
-                new LambdaQueryWrapper<SysUser>().eq(SysUser::getClientId, request.getUsername()));
+                new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, request.getUsername()));
 
         if (user == null) {
             throw new BadCredentialsException("用户不存在: " + request.getUsername());
@@ -51,12 +51,12 @@ public class AuthServiceImpl implements AuthService {
         String domainCode = domain != null ? domain.getDomainCode() : "unknown";
         String domainName = domain != null ? domain.getDomainName() : "未知域";
 
-        String token = jwtUtil.generateToken(user.getClientId(), domainCode, user.getRoleType());
+        String token = jwtUtil.generateToken(user.getUsername(), domainCode, user.getRoleType());
 
         return LoginResponse.builder()
                 .token(token)
                 .expires(jwtUtil.getExpirationMs() / 1000)
-                .clientId(user.getClientId())
+                .username(user.getUsername())
                 .roleType(user.getRoleType())
                 .domainCode(domainCode)
                 .domainName(domainName)
@@ -68,15 +68,15 @@ public class AuthServiceImpl implements AuthService {
         if (!jwtUtil.validateToken(oldToken)) {
             throw new BadCredentialsException("令牌无效或已过期");
         }
-        String clientId = jwtUtil.getClientIdFromToken(oldToken);
+        String username = jwtUtil.getClientIdFromToken(oldToken);
         String domainCode = jwtUtil.getDomainCodeFromToken(oldToken);
         String roleType = jwtUtil.getRoleTypeFromToken(oldToken);
 
-        String newToken = jwtUtil.generateToken(clientId, domainCode, roleType);
+        String newToken = jwtUtil.generateToken(username, domainCode, roleType);
         return LoginResponse.builder()
                 .token(newToken)
                 .expires(jwtUtil.getExpirationMs() / 1000)
-                .clientId(clientId)
+                .username(username)
                 .roleType(roleType)
                 .domainCode(domainCode)
                 .build();
@@ -91,22 +91,26 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     public boolean checkACL(String clientId, String topic, String action) {
+        // 从 clientId (username_deviceId) 中提取 username
+        String username = extractUsernameFromClientId(clientId);
+
         // 1. admin超级角色直接放行
         SysUser user = userMapper.selectOne(
-                new LambdaQueryWrapper<SysUser>().eq(SysUser::getClientId, clientId));
+                new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
         if (user != null && "admin".equals(user.getRoleType())) {
             return true;
         }
 
-        // 获取该客户端所有ACL规则 + 全局规则(*)
+        // 获取该客户端所有ACL规则 + username_* 通配符规则 + 全局规则(*)
         List<SysTopicAcl> rules = aclMapper.selectList(
                 new LambdaQueryWrapper<SysTopicAcl>()
-                        .in(SysTopicAcl::getClientId, clientId, "*"));
+                        .in(SysTopicAcl::getClientId, clientId, username + "_*", "*"));
 
         // 2. 检查deny规则
         for (SysTopicAcl rule : rules) {
             if ("deny".equals(rule.getAccessType()) && matchesAction(rule.getAction(), action)
-                    && matchesTopic(rule.getTopicFilter(), topic)) {
+                    && matchesTopic(rule.getTopicFilter(), topic)
+                    && matchesClientId(rule.getClientId(), clientId, username)) {
                 // 非全局兜底*的deny规则 → 黑名单命中
                 if (!"*".equals(rule.getClientId()) || !"#".equals(rule.getTopicFilter())) {
                     log.warn("ACL黑名单命中: client={}, topic={}, action={}", clientId, topic, action);
@@ -118,13 +122,44 @@ public class AuthServiceImpl implements AuthService {
         // 3. 检查allow规则 (精确匹配 + 通配符匹配)
         for (SysTopicAcl rule : rules) {
             if ("allow".equals(rule.getAccessType()) && matchesAction(rule.getAction(), action)
-                    && matchesTopic(rule.getTopicFilter(), topic)) {
+                    && matchesTopic(rule.getTopicFilter(), topic)
+                    && matchesClientId(rule.getClientId(), clientId, username)) {
                 return true;
             }
         }
 
         // 4. 默认兜底拒绝
         log.warn("ACL默认拒绝: client={}, topic={}, action={}", clientId, topic, action);
+        return false;
+    }
+
+    /**
+     * 从 clientId (username_deviceId) 中提取 username
+     */
+    private String extractUsernameFromClientId(String clientId) {
+        if (clientId == null) {
+            return "";
+        }
+        int underscoreIndex = clientId.lastIndexOf('_');
+        if (underscoreIndex > 0) {
+            return clientId.substring(0, underscoreIndex);
+        }
+        return clientId;
+    }
+
+    /**
+     * 匹配 clientId，支持通配符格式 username_*
+     */
+    private boolean matchesClientId(String ruleClientId, String actualClientId, String username) {
+        if ("*".equals(ruleClientId)) {
+            return true;
+        }
+        if (ruleClientId.equals(actualClientId)) {
+            return true;
+        }
+        if (ruleClientId.equals(username + "_*")) {
+            return actualClientId.startsWith(username + "_");
+        }
         return false;
     }
 

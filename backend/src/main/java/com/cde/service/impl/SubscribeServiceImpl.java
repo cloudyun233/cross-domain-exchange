@@ -25,19 +25,23 @@ public class SubscribeServiceImpl implements SubscribeService {
     private final MqttClientService mqttClientService;
     private final AuditService auditService;
 
-    // clientId → SseEmitter
-    private final Map<String, SseEmitter> emitters = new ConcurrentHashMap<>();
-    // topic → List<clientId> (跟踪哪些客户端订阅了哪些主题)
-    private final Map<String, CopyOnWriteArrayList<String>> topicSubscribers = new ConcurrentHashMap<>();
+    // clientId → connectionId → SseEmitter (支持同一客户端多SSE连接)
+    private final Map<String, Map<String, SseEmitter>> emitters = new ConcurrentHashMap<>();
+    // clientId → topic → List<connectionId> (跟踪哪些客户端连接订阅了哪些主题)
+    private final Map<String, Map<String, CopyOnWriteArrayList<String>>> topicSubscribers = new ConcurrentHashMap<>();
 
     @Override
-    public SseEmitter subscribe(String clientId, String topic, int qos) {
+    public SseEmitter subscribe(String clientId, String connectionId, String topic, int qos) {
         // 创建SSE连接 (超时30分钟)
         SseEmitter emitter = new SseEmitter(30 * 60 * 1000L);
-        emitters.put(clientId, emitter);
 
-        // 记录订阅关系
-        topicSubscribers.computeIfAbsent(topic, k -> new CopyOnWriteArrayList<>()).add(clientId);
+        // 存储emitter: clientId -> connectionId -> emitter
+        emitters.computeIfAbsent(clientId, k -> new ConcurrentHashMap<>()).put(connectionId, emitter);
+
+        // 记录订阅关系: clientId -> topic -> List<connectionId>
+        topicSubscribers.computeIfAbsent(clientId, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(topic, k -> new CopyOnWriteArrayList<>())
+                .add(connectionId);
 
         // 后端代理订阅EMQX
         mqttClientService.subscribe(topic, qos, (t, payload) -> {
@@ -45,9 +49,9 @@ public class SubscribeServiceImpl implements SubscribeService {
         });
 
         // 清理回调
-        emitter.onCompletion(() -> cleanup(clientId, topic));
-        emitter.onTimeout(() -> cleanup(clientId, topic));
-        emitter.onError(e -> cleanup(clientId, topic));
+        emitter.onCompletion(() -> cleanup(clientId, connectionId, topic));
+        emitter.onTimeout(() -> cleanup(clientId, connectionId, topic));
+        emitter.onError(e -> cleanup(clientId, connectionId, topic));
 
         auditService.log(clientId, "subscribe", "订阅主题: " + topic + ", QoS=" + qos, "backend");
 
@@ -64,43 +68,65 @@ public class SubscribeServiceImpl implements SubscribeService {
     }
 
     @Override
-    public void unsubscribe(String clientId, String topic) {
-        cleanup(clientId, topic);
+    public void unsubscribe(String clientId, String connectionId, String topic) {
+        cleanup(clientId, connectionId, topic);
         auditService.log(clientId, "unsubscribe", "取消订阅: " + topic, "backend");
     }
 
     @Override
     public void pushMessage(String topic, String payload) {
-        // 遍历所有主题订阅者，推送消息
-        topicSubscribers.forEach((subscribedTopic, subscribers) -> {
-            if (matchesTopic(subscribedTopic, topic)) {
-                for (String clientId : subscribers) {
-                    SseEmitter emitter = emitters.get(clientId);
-                    if (emitter != null) {
-                        try {
-                            emitter.send(SseEmitter.event()
-                                    .name("message")
-                                    .data(Map.of(
-                                            "topic", topic,
-                                            "payload", payload,
-                                            "timestamp", System.currentTimeMillis()
-                                    )));
-                        } catch (IOException e) {
-                            log.warn("SSE推送失败, 清理客户端: {}", clientId);
-                            cleanup(clientId, subscribedTopic);
+        // 遍历所有用户，推送消息
+        topicSubscribers.forEach((clientId, userTopics) -> {
+            userTopics.forEach((subscribedTopic, connectionIds) -> {
+                if (matchesTopic(subscribedTopic, topic)) {
+                    for (String connectionId : connectionIds) {
+                        Map<String, SseEmitter> userEmitters = emitters.get(clientId);
+                        if (userEmitters != null) {
+                            SseEmitter emitter = userEmitters.get(connectionId);
+                            if (emitter != null) {
+                                try {
+                                    emitter.send(SseEmitter.event()
+                                            .name("message")
+                                            .data(Map.of(
+                                                    "topic", topic,
+                                                    "payload", payload,
+                                                    "timestamp", System.currentTimeMillis()
+                                            )));
+                                } catch (IOException e) {
+                                    log.warn("SSE推送失败, 清理连接: clientId={}, connectionId={}", clientId, connectionId);
+                                    cleanup(clientId, connectionId, subscribedTopic);
+                                }
+                            }
                         }
                     }
                 }
-            }
+            });
         });
     }
 
-    private void cleanup(String clientId, String topic) {
-        emitters.remove(clientId);
-        CopyOnWriteArrayList<String> list = topicSubscribers.get(topic);
-        if (list != null) {
-            list.remove(clientId);
-            if (list.isEmpty()) topicSubscribers.remove(topic);
+    private void cleanup(String clientId, String connectionId, String topic) {
+        // 清理emitter
+        Map<String, SseEmitter> userEmitters = emitters.get(clientId);
+        if (userEmitters != null) {
+            userEmitters.remove(connectionId);
+            if (userEmitters.isEmpty()) {
+                emitters.remove(clientId);
+            }
+        }
+
+        // 清理topic订阅关系
+        Map<String, CopyOnWriteArrayList<String>> userTopics = topicSubscribers.get(clientId);
+        if (userTopics != null) {
+            CopyOnWriteArrayList<String> connIds = userTopics.get(topic);
+            if (connIds != null) {
+                connIds.remove(connectionId);
+                if (connIds.isEmpty()) {
+                    userTopics.remove(topic);
+                    if (userTopics.isEmpty()) {
+                        topicSubscribers.remove(clientId);
+                    }
+                }
+            }
         }
     }
 

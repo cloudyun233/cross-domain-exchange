@@ -5,7 +5,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * 审计日志表 (论文表4-10)
+ * 审计日志表
  */
 @Data
 @TableName("sys_audit_log")
@@ -17,15 +17,15 @@ public class SysAuditLog {
     /** 客户端ID */
     private String clientId;
 
-    /** 操作类型 (connect/disconnect/publish/subscribe/acl_deny/auth_success/auth_fail) */
+    /** 操作类型 (connect/publish/subscribe/acl_deny) */
     private String actionType;
 
-    /** 详细报文或原因 */
+    /** 详细信息 */
     private String detail;
 
     /** 客户端IP */
     private String ipAddress;
 
-    /** 记录时间 */
-    private LocalDateTime createTime;
+    /** 操作发生时间 */
+    private LocalDateTime actionTime;
 }

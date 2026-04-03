@@ -1,6 +1,6 @@
 package com.cde.controller;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+
 import com.cde.dto.ApiResponse;
 import com.cde.entity.SysUser;
 import com.cde.mapper.SysUserMapper;
@@ -8,7 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
+
 import java.util.List;
 
 @RestController
@@ -35,7 +35,6 @@ public class ClientController {
     @PostMapping
     public ApiResponse<SysUser> create(@RequestBody SysUser user) {
         user.setPasswordHash(passwordEncoder.encode(user.getPasswordHash()));
-        user.setCreateTime(LocalDateTime.now());
         userMapper.insert(user);
         user.setPasswordHash("***");
         return ApiResponse.ok("客户端创建成功", user);

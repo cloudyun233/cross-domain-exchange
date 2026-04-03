@@ -71,7 +71,6 @@ const AclManage: React.FC = () => {
     { title: '权限', dataIndex: 'accessType', render: (v: string) =>
       <Tag color={v === 'allow' ? 'green' : 'red'}>{v === 'allow' ? '允许' : '拒绝'}</Tag>
     },
-    { title: '创建时间', dataIndex: 'createTime' },
     {
       title: '操作', width: 160,
       render: (_: any, record: any) => (

@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 public class LoginResponse {
     private String token;
     private long expires;
-    private String clientId;
+    private String username;
     private String roleType;
     private String domainCode;
     private String domainName;

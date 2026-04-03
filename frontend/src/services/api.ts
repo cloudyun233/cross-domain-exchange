@@ -7,7 +7,7 @@ interface RequestOptions {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const token = localStorage.getItem('token');
+  const token = sessionStorage.getItem('token');
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -34,8 +34,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   const resp = await fetch(url, fetchOptions);
   if (resp.status === 401) {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
     window.location.href = '/login';
     throw new Error('认证已过期');
   }
@@ -93,14 +93,19 @@ export const api = {
   },
 
   // Subscribe (SSE)
-  createSubscribeStream: (topic: string, qos: number = 1): EventSource => {
-    const token = localStorage.getItem('token');
-    return new EventSource(
-      `${API_BASE}/subscribe/stream?topic=${encodeURIComponent(topic)}&qos=${qos}&token=${token}`
-    );
+  createSubscribeStream: (topic: string, qos: number = 1, connectionId?: string): EventSource => {
+    const token = sessionStorage.getItem('token');
+    let url = `${API_BASE}/subscribe/stream?topic=${encodeURIComponent(topic)}&qos=${qos}&token=${token}`;
+    if (connectionId) {
+      url += `&connectionId=${encodeURIComponent(connectionId)}`;
+    }
+    return new EventSource(url);
   },
-  cancelSubscribe: (topic: string) =>
-    request<any>('/subscribe/cancel', { method: 'POST', params: { topic } }),
+  cancelSubscribe: (topic: string, connectionId?: string) => {
+    const params: Record<string, string> = { topic };
+    if (connectionId) params.connectionId = connectionId;
+    return request<any>('/subscribe/cancel', { method: 'POST', params });
+  },
 
   // Network simulation
   getNetworkPresets: () => request<any>('/network/presets'),

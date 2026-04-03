@@ -25,9 +25,13 @@ public class SubscribeController {
     public SseEmitter stream(
             @RequestParam String topic,
             @RequestParam(defaultValue = "1") int qos,
+            @RequestParam(required = false) String connectionId,
             Authentication auth) {
 
         String clientId = auth.getName();
+        String connId = (connectionId != null && !connectionId.isEmpty()) 
+            ? connectionId 
+            : clientId + "-" + System.currentTimeMillis();
 
         // ACL权限校验
         if (!authService.checkACL(clientId, topic, "subscribe")) {
@@ -40,15 +44,19 @@ public class SubscribeController {
             return emitter;
         }
 
-        return subscribeService.subscribe(clientId, topic, qos);
+        return subscribeService.subscribe(clientId, connId, topic, qos);
     }
 
     /**
      * 取消订阅
      */
     @PostMapping("/cancel")
-    public ApiResponse<Void> cancel(@RequestParam String topic, Authentication auth) {
-        subscribeService.unsubscribe(auth.getName(), topic);
+    public ApiResponse<Void> cancel(@RequestParam String topic, @RequestParam(required = false) String connectionId, Authentication auth) {
+        String clientId = auth.getName();
+        String connId = (connectionId != null && !connectionId.isEmpty()) 
+            ? connectionId 
+            : clientId + "-" + System.currentTimeMillis();
+        subscribeService.unsubscribe(clientId, connId, topic);
         return ApiResponse.ok("已取消订阅", null);
     }
 }

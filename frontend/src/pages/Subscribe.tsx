@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Card, Input, Button, Select, Typography, Tag, List, Space, message, Badge, Empty } from 'antd';
 import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const { Title, Text } = Typography;
 
@@ -13,20 +14,33 @@ interface ReceivedMessage {
 }
 
 const Subscribe: React.FC = () => {
+  const { deviceId } = useAuth();
   const [topic, setTopic] = useState('/cross_domain/medical/#');
   const [qos, setQos] = useState(1);
   const [listening, setListening] = useState(false);
   const [messages, setMessages] = useState<ReceivedMessage[]>([]);
   const esRef = useRef<EventSource | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const maxReconnectAttempts = 5;
+  const baseReconnectDelay = 1000; // 1秒
 
   const startListening = () => {
     if (!topic) { message.warning('请输入订阅主题'); return; }
 
-    const es = api.createSubscribeStream(topic, qos);
+    // 清理旧连接
+    if (esRef.current) {
+      esRef.current.close();
+      esRef.current = null;
+    }
+
+    const es = api.createSubscribeStream(topic, qos, deviceId);
     esRef.current = es;
+    reconnectAttemptsRef.current = 0;
 
     es.addEventListener('connected', (_e: MessageEvent) => {
       message.success('SSE连接已建立, 等待消息...');
+      reconnectAttemptsRef.current = 0; // 重置重连计数器
     });
 
     es.addEventListener('message', (e: MessageEvent) => {
@@ -63,14 +77,50 @@ const Subscribe: React.FC = () => {
 
     es.onerror = () => {
       if (listening) {
-        message.warning('SSE连接中断，尝试重连...');
+        handleReconnect();
       }
     };
 
     setListening(true);
   };
 
+  const handleReconnect = () => {
+    if (!listening) return;
+
+    const attempts = reconnectAttemptsRef.current;
+    if (attempts >= maxReconnectAttempts) {
+      message.error('SSE连接失败，已达到最大重连次数，请手动重新连接');
+      setListening(false);
+      return;
+    }
+
+    // 指数退避重连
+    const delay = baseReconnectDelay * Math.pow(2, attempts);
+    message.warning(`SSE连接中断，${Math.round(delay / 1000)}秒后尝试重连...`);
+
+    // 清理之前的定时器
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+
+    // 设置新的重连定时器
+    reconnectTimeoutRef.current = setTimeout(() => {
+      // 先清理旧连接
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+      reconnectAttemptsRef.current = attempts + 1;
+      message.info(`尝试重连 (${reconnectAttemptsRef.current}/${maxReconnectAttempts})...`);
+      startListening();
+    }, delay);
+  };
+
   const stopListening = () => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
     if (esRef.current) {
       esRef.current.close();
       esRef.current = null;
@@ -78,6 +128,13 @@ const Subscribe: React.FC = () => {
     setListening(false);
     message.info('已停止监听');
   };
+
+  // 组件卸载时清理资源
+  useEffect(() => {
+    return () => {
+      stopListening();
+    };
+  }, []);
 
   const presetTopics = [
     { value: '/cross_domain/medical/#', label: '医疗域 (所有)' },

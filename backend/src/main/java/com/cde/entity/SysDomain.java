@@ -2,10 +2,9 @@ package com.cde.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
-import java.time.LocalDateTime;
 
 /**
- * 安全域表 (论文表4-7)
+ * 安全域表
  */
 @Data
 @TableName("sys_domain")
@@ -22,7 +21,4 @@ public class SysDomain {
 
     /** 状态 (1:启用, 0:禁用) */
     private Integer status;
-
-    /** 创建时间 */
-    private LocalDateTime createTime;
 }

@@ -2,10 +2,9 @@ package com.cde.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
-import java.time.LocalDateTime;
 
 /**
- * 访问控制规则表 (论文表4-9)
+ * 访问控制规则表
  */
 @Data
 @TableName("sys_topic_acl")
@@ -25,7 +24,4 @@ public class SysTopicAcl {
 
     /** 访问类型 (allow/deny) */
     private String accessType;
-
-    /** 创建时间 */
-    private LocalDateTime createTime;
 }

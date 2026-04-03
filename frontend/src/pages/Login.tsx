@@ -15,7 +15,7 @@ const Login: React.FC = () => {
     setLoading(true);
     try {
       await login(values.username, values.password);
-      message.success('登录成功');
+      message.success('登录成功，登录状态仅在当前标签页有效');
       navigate('/dashboard');
     } catch (err: any) {
       message.error(err.message || '登录失败');

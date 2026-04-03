@@ -51,7 +51,6 @@ const DomainManage: React.FC = () => {
     { title: '域编码', dataIndex: 'domainCode', render: (v: string) => <Tag color="blue">{v}</Tag> },
     { title: '域名称', dataIndex: 'domainName' },
     { title: '状态', dataIndex: 'status', render: (v: number) => v === 1 ? <Tag color="green">启用</Tag> : <Tag color="red">禁用</Tag> },
-    { title: '创建时间', dataIndex: 'createTime' },
     {
       title: '操作', width: 160,
       render: (_: any, record: any) => (

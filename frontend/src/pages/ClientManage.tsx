@@ -58,7 +58,6 @@ const ClientManage: React.FC = () => {
       return d ? <Tag color="blue">{d.domainName}</Tag> : v;
     }},
     { title: '角色', dataIndex: 'roleType', render: (v: string) => <Tag color={roleColors[v]}>{v}</Tag> },
-    { title: '创建时间', dataIndex: 'createTime' },
     {
       title: '操作', width: 160,
       render: (_: any, record: any) => (
