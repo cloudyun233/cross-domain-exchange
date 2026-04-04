@@ -4,6 +4,7 @@ import zhCN from 'antd/locale/zh_CN';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './layouts/MainLayout';
+import ConnectionStatus from './components/ConnectionStatus';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Publish from './pages/Publish';
@@ -27,6 +28,7 @@ function App() {
       }}
     >
       <AuthProvider>
+        <ConnectionStatus />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route

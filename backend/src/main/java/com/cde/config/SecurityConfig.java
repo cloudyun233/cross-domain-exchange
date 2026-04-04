@@ -32,6 +32,7 @@ public class SecurityConfig {
             .headers(headers -> headers.frameOptions(fo -> fo.sameOrigin()))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
+                .requestMatchers("/api/status").permitAll()
                 .requestMatchers("/api/webhook/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()

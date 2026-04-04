@@ -2,10 +2,15 @@ import { EventSourcePolyfill } from 'event-source-polyfill';
 
 const API_BASE = '/api';
 
+export interface StatusResponse {
+  status: string;
+}
+
 interface RequestOptions {
   method?: string;
   body?: any;
   params?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -22,6 +27,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const fetchOptions: RequestInit = {
     method: options.method || 'GET',
     headers,
+    signal: options.signal,
   };
 
   if (options.body !== undefined) {
@@ -45,6 +51,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
+  // Status
+  checkStatus: (signal?: AbortSignal) => request<StatusResponse>('/status', { signal }),
+
   // Auth
   login: (data: { username: string; password: string }) =>
     request<any>('/auth/login', { method: 'POST', body: data }),
