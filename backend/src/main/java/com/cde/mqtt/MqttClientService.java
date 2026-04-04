@@ -188,8 +188,12 @@ public class MqttClientService {
         }
 
         synchronized (ctx.lock) {
-            if (!ctx.connected) {
+            if (!ctx.client.getState().isConnected()) {
                 throw new IllegalStateException("User " + username + " is not connected to MQTT broker");
+            }
+            if (!ctx.connected) {
+                log.info("MQTT client auto-reconnected for user {}, updating state", username);
+                ctx.connected = true;
             }
             ctx.callbacks.put(topic, callback);
             ctx.qosMap.put(topic, qos);
@@ -218,8 +222,12 @@ public class MqttClientService {
         }
 
         synchronized (ctx.lock) {
-            if (!ctx.connected) {
+            if (!ctx.client.getState().isConnected()) {
                 throw new IllegalStateException("User " + username + " is not connected to MQTT broker");
+            }
+            if (!ctx.connected) {
+                log.info("MQTT client auto-reconnected for user {}, updating state", username);
+                ctx.connected = true;
             }
             sendPublish(ctx.client, topic, payload, qos);
         }
