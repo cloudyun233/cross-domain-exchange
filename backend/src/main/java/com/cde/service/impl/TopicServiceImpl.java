@@ -22,15 +22,16 @@ public class TopicServiceImpl implements TopicService {
     private final AuditService auditService;
 
     @Override
-    public void publishMsg(String topic, String payload, int qos, String clientId) {
+    public void publishMsg(String topic, String payload, int qos, String username, String token) {
         try {
-            mqttClientService.publish(topic, payload, qos);
-            auditService.log(clientId, "publish",
+            mqttClientService.connectForUser(username, token);
+            mqttClientService.publishForUser(username, topic, payload, qos);
+            auditService.log(username, "publish",
                     String.format("发布消息到主题 %s, QoS=%d, 内容长度=%d", topic, qos, payload.length()),
                     "backend");
-            log.info("消息发布成功: topic={}, qos={}, client={}", topic, qos, clientId);
+            log.info("消息发布成功: topic={}, qos={}, user={}", topic, qos, username);
         } catch (Exception e) {
-            auditService.log(clientId, "publish_fail",
+            auditService.log(username, "publish_fail",
                     String.format("发布失败: topic=%s, 原因=%s", topic, e.getMessage()),
                     "backend");
             throw new RuntimeException("消息发布失败: " + e.getMessage(), e);

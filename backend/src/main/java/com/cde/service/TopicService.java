@@ -8,8 +8,8 @@ import java.util.Map;
  */
 public interface TopicService {
 
-    /** 发布消息到MQTT Broker */
-    void publishMsg(String topic, String payload, int qos, String clientId);
+    /** 发布消息到MQTT Broker (使用用户级连接) */
+    void publishMsg(String topic, String payload, int qos, String username, String token);
 
     /** 构建安全域主题树 */
     List<Map<String, Object>> buildDomainTopicTree();

@@ -34,11 +34,11 @@ public class MonitorController {
         return ApiResponse.ok(monitorService.getTopicStats());
     }
 
-    @GetMapping("/connection-status")
-    public ApiResponse<Map<String, Object>> getConnectionStatus() {
-        return ApiResponse.ok(Map.of(
-                "connected", mqttClientService.isConnected(),
-                "protocol", mqttClientService.getActiveProtocol()
-        ));
-    }
+    // @GetMapping("/connection-status")
+    // public ApiResponse<Map<String, Object>> getConnectionStatus() {
+    //     return ApiResponse.ok(Map.of(
+    //             "connected", mqttClientService.isConnected(),
+    //             "protocol", mqttClientService.getActiveProtocol()
+    //     ));
+    // }
 }

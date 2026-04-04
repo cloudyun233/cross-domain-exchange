@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { EventSourcePolyfill } from 'event-source-polyfill';
 import { Card, Input, Button, Select, Typography, Tag, List, Space, message, Badge, Empty } from 'antd';
 import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
@@ -19,7 +20,7 @@ const Subscribe: React.FC = () => {
   const [qos, setQos] = useState(1);
   const [listening, setListening] = useState(false);
   const [messages, setMessages] = useState<ReceivedMessage[]>([]);
-  const esRef = useRef<EventSource | null>(null);
+  const esRef = useRef<EventSourcePolyfill | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef<number>(0);
   const maxReconnectAttempts = 5;
@@ -38,12 +39,12 @@ const Subscribe: React.FC = () => {
     esRef.current = es;
     reconnectAttemptsRef.current = 0;
 
-    es.addEventListener('connected', (_e: MessageEvent) => {
+    es.addEventListener('connected', (() => {
       message.success('SSE连接已建立, 等待消息...');
       reconnectAttemptsRef.current = 0; // 重置重连计数器
-    });
+    }) as any);
 
-    es.addEventListener('message', (e: MessageEvent) => {
+    es.addEventListener('message', ((e: any) => {
       try {
         const data = JSON.parse(e.data);
         let meta = undefined;
@@ -66,7 +67,7 @@ const Subscribe: React.FC = () => {
       } catch (err) {
         console.error('解析消息失败', err);
       }
-    });
+    }) as any);
 
     es.addEventListener('error', (e: any) => {
       const errData = e.data ? JSON.parse(e.data) : null;

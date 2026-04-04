@@ -19,7 +19,6 @@ import java.util.Map;
 public class TopicController {
 
     private final TopicService topicService;
-    private final AuthService authService;
     private final List<DataConverter> dataConverters;
 
     @GetMapping("/tree")
@@ -29,6 +28,7 @@ public class TopicController {
 
     /**
      * 发布消息 (论文4.4.2: 含数据格式转换拦截)
+     * ACL校验由EMQX全权负责
      */
     @PostMapping("/publish")
     public ApiResponse<Void> publish(
@@ -36,14 +36,11 @@ public class TopicController {
             @RequestBody String payload,
             @RequestParam(defaultValue = "1") int qos,
             @RequestParam(defaultValue = "json") String format,
+            @RequestHeader("Authorization") String authHeader,
             Authentication auth) {
 
-        String clientId = auth.getName();
-
-        // ACL权限校验 (论文4.2.4)
-        if (!authService.checkACL(clientId, topic, "publish")) {
-            return ApiResponse.fail("ACL校验失败：用户 " + clientId + " 无发布权限，主题=" + topic);
-        }
+        String username = auth.getName();
+        String token = authHeader.replace("Bearer ", "");
 
         // 数据格式转换 (论文4.4.2: 拦截器机制)
         String convertedPayload = payload;
@@ -66,7 +63,8 @@ public class TopicController {
                     + "\"data\":" + convertedPayload + "}";
         }
 
-        topicService.publishMsg(topic, convertedPayload, qos, clientId);
+        // ACL校验由EMQX全权负责，使用用户级连接发布
+        topicService.publishMsg(topic, convertedPayload, qos, username, token);
         return ApiResponse.ok("消息发布成功", null);
     }
 }

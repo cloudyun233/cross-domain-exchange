@@ -1,3 +1,5 @@
+import { EventSourcePolyfill } from 'event-source-polyfill';
+
 const API_BASE = '/api';
 
 interface RequestOptions {
@@ -70,12 +72,13 @@ export const api = {
 
   // Topics
   getTopicTree: () => request<any>('/topics/tree'),
-  publish: (topic: string, payload: string, qos: number, format: string = 'json') =>
-    request<any>(`/topics/publish`, {
+  publish: (topic: string, payload: string, qos: number, format: string = 'json') => {
+    return request<any>(`/topics/publish`, {
       method: 'POST',
       body: payload,
       params: { topic, qos: String(qos), format },
-    }),
+    });
+  },
 
   // Monitor
   getMetrics: () => request<any>('/monitor/metrics'),
@@ -93,13 +96,18 @@ export const api = {
   },
 
   // Subscribe (SSE)
-  createSubscribeStream: (topic: string, qos: number = 1, connectionId?: string): EventSource => {
+  createSubscribeStream: (topic: string, qos: number = 1, connectionId?: string): EventSourcePolyfill => {
     const token = sessionStorage.getItem('token');
-    let url = `${API_BASE}/subscribe/stream?topic=${encodeURIComponent(topic)}&qos=${qos}&token=${token}`;
+    let url = `${API_BASE}/subscribe/stream?topic=${encodeURIComponent(topic)}&qos=${qos}`;
     if (connectionId) {
       url += `&connectionId=${encodeURIComponent(connectionId)}`;
     }
-    return new EventSource(url);
+    
+    return new EventSourcePolyfill(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
   },
   cancelSubscribe: (topic: string, connectionId?: string) => {
     const params: Record<string, string> = { topic };

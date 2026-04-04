@@ -14,7 +14,7 @@ const { Text } = Typography;
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const { user, logout } = useAuth();
+  const { user, clientId, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -100,7 +100,7 @@ const MainLayout: React.FC = () => {
             <Dropdown menu={{ items: dropdownItems }} placement="bottomRight">
               <Space style={{ cursor: 'pointer' }}>
                 <Avatar size="small" icon={<UserOutlined />} style={{ background: '#1890ff' }} />
-                <Text strong>{user?.clientId}</Text>
+                <Text strong>{clientId}</Text>
               </Space>
             </Dropdown>
           </Space>
