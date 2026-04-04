@@ -8,22 +8,39 @@ const ConnectionStatus: React.FC = () => {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
+    let activeTimeoutId: NodeJS.Timeout | null = null;
+    let activeController: AbortController | null = null;
+
     const checkConnection = async () => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), STATUS_CHECK_TIMEOUT);
+      if (activeTimeoutId) clearTimeout(activeTimeoutId);
+      if (activeController) activeController.abort();
+
+      activeController = new AbortController();
+      const controller = activeController;
+      activeTimeoutId = setTimeout(() => controller?.abort(), STATUS_CHECK_TIMEOUT);
 
       try {
-        const response = await api.checkStatus(controller.signal);
-        clearTimeout(timeoutId);
+        const response = await api.checkStatus(activeController.signal);
+        if (activeTimeoutId) clearTimeout(activeTimeoutId);
+        activeTimeoutId = null;
+        activeController = null;
         setConnected(response.status === 'ok');
       } catch {
+        if (activeTimeoutId) clearTimeout(activeTimeoutId);
+        activeTimeoutId = null;
+        activeController = null;
         setConnected(false);
       }
     };
 
     checkConnection();
     const interval = setInterval(checkConnection, 10000);
-    return () => clearInterval(interval);
+    
+    return () => {
+      clearInterval(interval);
+      if (activeTimeoutId) clearTimeout(activeTimeoutId);
+      if (activeController) activeController.abort();
+    };
   }, []);
 
   return (
