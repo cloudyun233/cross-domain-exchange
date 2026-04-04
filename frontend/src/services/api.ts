@@ -105,12 +105,9 @@ export const api = {
   },
 
   // Subscribe (SSE)
-  createSubscribeStream: (topic: string, qos: number = 1, connectionId?: string): EventSourcePolyfill => {
+  createSubscribeStream: (topic: string, qos: number = 1): EventSourcePolyfill => {
     const token = sessionStorage.getItem('token');
     let url = `${API_BASE}/subscribe/stream?topic=${encodeURIComponent(topic)}&qos=${qos}`;
-    if (connectionId) {
-      url += `&connectionId=${encodeURIComponent(connectionId)}`;
-    }
     
     return new EventSourcePolyfill(url, {
       headers: {
@@ -118,10 +115,8 @@ export const api = {
       }
     });
   },
-  cancelSubscribe: (topic: string, connectionId?: string) => {
-    const params: Record<string, string> = { topic };
-    if (connectionId) params.connectionId = connectionId;
-    return request<any>('/subscribe/cancel', { method: 'POST', params });
+  cancelSubscribe: (topic: string) => {
+    return request<any>('/subscribe/cancel', { method: 'POST', params: { topic } });
   },
 
   // Network simulation

@@ -2,11 +2,12 @@ package com.cde.mqtt;
 
 import com.hivemq.client.mqtt.MqttClient;
 import com.hivemq.client.mqtt.MqttGlobalPublishFilter;
-import com.hivemq.client.mqtt.mqtt3.Mqtt3AsyncClient;
-import com.hivemq.client.mqtt.mqtt3.message.auth.Mqtt3SimpleAuth;
-import com.hivemq.client.mqtt.mqtt3.message.connect.connack.Mqtt3ConnAck;
-import com.hivemq.client.mqtt.mqtt3.message.publish.Mqtt3Publish;
-import com.hivemq.client.mqtt.mqtt3.message.subscribe.suback.Mqtt3SubAck;
+import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient;
+import com.hivemq.client.mqtt.mqtt5.message.auth.Mqtt5SimpleAuth;
+import com.hivemq.client.mqtt.mqtt5.message.connect.connack.Mqtt5ConnAck;
+import com.hivemq.client.mqtt.datatypes.MqttQos;
+import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5PublishResult;
+import com.hivemq.client.mqtt.mqtt5.message.subscribe.suback.Mqtt5SubAck;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,13 +49,13 @@ public class MqttClientService {
     private final Map<String, UserMqttContext> userContexts = new ConcurrentHashMap<>();
 
     private static class UserMqttContext {
-        final Mqtt3AsyncClient client;
+        final Mqtt5AsyncClient client;
         final Map<String, BiConsumer<String, String>> callbacks = new ConcurrentHashMap<>();
         final Map<String, Integer> qosMap = new ConcurrentHashMap<>();
         volatile boolean connected;
         final Object lock = new Object();
 
-        UserMqttContext(Mqtt3AsyncClient client) {
+        UserMqttContext(Mqtt5AsyncClient client) {
             this.client = client;
         }
     }
@@ -76,8 +77,8 @@ public class MqttClientService {
         try {
             String clientId = username;
 
-            Mqtt3AsyncClient mqttClient = MqttClient.builder()
-                    .useMqttVersion3()
+            Mqtt5AsyncClient mqttClient = MqttClient.builder()
+                    .useMqttVersion5()
                     .identifier(clientId)
                     .serverHost(brokerHost)
                     .serverPort(tlsPort)
@@ -85,19 +86,20 @@ public class MqttClientService {
                     .automaticReconnectWithDefaultConfig()
                     .buildAsync();
 
-            Mqtt3SimpleAuth simpleAuth = Mqtt3SimpleAuth.builder()
+            Mqtt5SimpleAuth simpleAuth = Mqtt5SimpleAuth.builder()
                     .username(username)
                     .password(jwtToken.getBytes(StandardCharsets.UTF_8))
                     .build();
 
-            CompletableFuture<Mqtt3ConnAck> connectFuture = mqttClient.toAsync()
+            CompletableFuture<Mqtt5ConnAck> connectFuture = mqttClient.toAsync()
                     .connectWith()
                     .simpleAuth(simpleAuth)
-                    .cleanSession(false)
+                    .cleanStart(false)
+                    .sessionExpiryInterval(3600)
                     .keepAlive(60)
                     .send();
 
-            Mqtt3ConnAck connAck = connectFuture.get(connectTimeoutSeconds, TimeUnit.SECONDS);
+            Mqtt5ConnAck connAck = connectFuture.get(connectTimeoutSeconds, TimeUnit.SECONDS);
 
             UserMqttContext ctx = new UserMqttContext(mqttClient);
             synchronized (ctx.lock) {
@@ -124,27 +126,28 @@ public class MqttClientService {
         try {
             String clientId = username;
 
-            Mqtt3AsyncClient mqttClient = MqttClient.builder()
-                    .useMqttVersion3()
+            Mqtt5AsyncClient mqttClient = MqttClient.builder()
+                    .useMqttVersion5()
                     .identifier(clientId)
                     .serverHost(brokerHost)
                     .serverPort(tcpPort)
                     .automaticReconnectWithDefaultConfig()
                     .buildAsync();
 
-            Mqtt3SimpleAuth simpleAuth = Mqtt3SimpleAuth.builder()
+            Mqtt5SimpleAuth simpleAuth = Mqtt5SimpleAuth.builder()
                     .username(username)
                     .password(jwtToken.getBytes(StandardCharsets.UTF_8))
                     .build();
 
-            CompletableFuture<Mqtt3ConnAck> connectFuture = mqttClient.toAsync()
+            CompletableFuture<Mqtt5ConnAck> connectFuture = mqttClient.toAsync()
                     .connectWith()
                     .simpleAuth(simpleAuth)
-                    .cleanSession(false)
+                    .cleanStart(false)
+                    .sessionExpiryInterval(3600)
                     .keepAlive(60)
                     .send();
 
-            Mqtt3ConnAck connAck = connectFuture.get(connectTimeoutSeconds, TimeUnit.SECONDS);
+            Mqtt5ConnAck connAck = connectFuture.get(connectTimeoutSeconds, TimeUnit.SECONDS);
 
             UserMqttContext ctx = new UserMqttContext(mqttClient);
             synchronized (ctx.lock) {
@@ -251,6 +254,12 @@ public class MqttClientService {
         }
     }
 
+    /**
+     * 检查指定用户的 MQTT 连接状态
+     *
+     * @param username 用户名
+     * @return true 如果该用户有活跃的 MQTT 连接
+     */
     public boolean isUserConnected(String username) {
         UserMqttContext ctx = userContexts.get(username);
         if (ctx == null) {
@@ -261,16 +270,16 @@ public class MqttClientService {
         }
     }
 
-    private void sendPublish(Mqtt3AsyncClient client, String topic, String payload, int qos) {
+    private void sendPublish(Mqtt5AsyncClient client, String topic, String payload, int qos) {
         if (client == null || !client.getState().isConnected()) {
             throw new IllegalStateException("MQTT client not connected");
         }
         try {
-            CompletableFuture<Mqtt3Publish> future = client.toAsync()
+            CompletableFuture<Mqtt5PublishResult> future = client.toAsync()
                     .publishWith()
                     .topic(topic)
                     .payload(payload.getBytes(StandardCharsets.UTF_8))
-                    .qos(com.hivemq.client.mqtt.datatypes.MqttQos.fromCode(qos))
+                    .qos(MqttQos.fromCode(qos))
                     .send();
 
             future.get(publishTimeoutSeconds, TimeUnit.SECONDS);
@@ -279,22 +288,46 @@ public class MqttClientService {
         }
     }
 
-    private void sendSubscribe(Mqtt3AsyncClient client, String topic, int qos) {
+    private void sendSubscribe(Mqtt5AsyncClient client, String topic, int qos) {
         try {
             if (client == null) {
                 throw new IllegalStateException("MQTT broker is not connected");
             }
 
-            CompletableFuture<Mqtt3SubAck> future = client.toAsync()
+            CompletableFuture<Mqtt5SubAck> future = client.toAsync()
                     .subscribeWith()
                     .topicFilter(topic)
-                    .qos(com.hivemq.client.mqtt.datatypes.MqttQos.fromCode(qos))
+                    .qos(MqttQos.fromCode(qos))
                     .send();
 
             future.get(subscribeTimeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
             throw new RuntimeException("Failed to subscribe topic " + topic + ": " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 检查后端是否有活跃的 MQTT 连接（用于运维监控）
+     *
+     * @return true 如果至少有一个用户存在活跃的 MQTT 连接
+     */
+    public boolean isConnected() {
+        return userContexts.values().stream().anyMatch(ctx -> ctx.connected && ctx.client.getState().isConnected());
+    }
+
+    /**
+     * 获取当前活跃连接的协议类型（用于运维监控）
+     * 注意：当多个用户使用不同协议连接时，只返回第一个活跃连接的协议
+     *
+     * @return "TLS"、"TCP" 或 "未连接"
+     */
+    public String getActiveProtocol() {
+        for (UserMqttContext ctx : userContexts.values()) {
+            if (ctx.connected && ctx.client.getState().isConnected()) {
+                return ctx.client.getConfig().getSslConfig().isPresent() ? "TLS" : "TCP";
+            }
+        }
+        return "未连接";
     }
 
     @PreDestroy

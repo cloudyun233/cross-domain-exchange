@@ -27,7 +27,7 @@ public class SubscribeController {
     }
 
     @PostMapping("/cancel")
-    public ApiResponse<Void> cancel(@RequestParam String topic, @RequestParam(required = false) String connectionId, Authentication auth) {
+    public ApiResponse<Void> cancel(@RequestParam String topic, Authentication auth) {
         String username = auth.getName();
         subscribeService.unsubscribe(username, topic);
         return ApiResponse.ok("已取消订阅", null);

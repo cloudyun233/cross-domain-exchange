@@ -26,12 +26,35 @@ public class SubscribeServiceImpl implements SubscribeService {
 
     @Override
     public SseEmitter subscribe(String username, String token, String topic, int qos) {
-        SseEmitter emitter = null;
         try {
             mqttClientService.connectForUser(username, token);
 
-            emitter = new SseEmitter(30 * 60 * 1000L);
-            userEmitters.put(username, emitter);
+            SseEmitter emitter = userEmitters.get(username);
+            if (emitter == null) {
+                emitter = new SseEmitter(30 * 60 * 1000L);
+                userEmitters.put(username, emitter);
+
+                emitter.onCompletion(() -> {
+                    log.info("SSE connection completed for user: {}", username);
+                    userEmitters.remove(username);
+                });
+                emitter.onTimeout(() -> {
+                    log.info("SSE connection timeout for user: {}", username);
+                    userEmitters.remove(username);
+                });
+                emitter.onError(e -> {
+                    log.warn("SSE connection error for user {}: {}", username, e.getMessage());
+                    userEmitters.remove(username);
+                });
+
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("connected")
+                            .data(Map.of("message", "SSE连接已建立")));
+                } catch (IOException e) {
+                    log.error("SSE发送连接确认失败", e);
+                }
+            }
 
             userTopics.computeIfAbsent(username, k -> new CopyOnWriteArrayList<>()).add(topic);
 
@@ -39,38 +62,12 @@ public class SubscribeServiceImpl implements SubscribeService {
                 pushMessageToUser(username, t, payload);
             });
 
-            emitter.onCompletion(() -> {
-                log.info("SSE connection completed for user: {}", username);
-                userEmitters.remove(username);
-            });
-            emitter.onTimeout(() -> {
-                log.info("SSE connection timeout for user: {}", username);
-                userEmitters.remove(username);
-            });
-            emitter.onError(e -> {
-                log.warn("SSE connection error for user {}: {}", username, e.getMessage());
-                userEmitters.remove(username);
-            });
-
             auditService.log(username, "subscribe", "订阅主题: " + topic + ", QoS=" + qos, "backend");
-
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("connected")
-                        .data(Map.of("message", "SSE连接已建立, 订阅主题: " + topic)));
-            } catch (IOException e) {
-                log.error("SSE发送连接确认失败", e);
-            }
 
             return emitter;
         } catch (Exception e) {
             log.error("MQTT订阅失败, user={}, topic={}: {}", username, topic, e.getMessage());
-            
-            if (emitter != null) {
-                emitter.completeWithError(e);
-                userEmitters.remove(username);
-            }
-            
+
             CopyOnWriteArrayList<String> topics = userTopics.get(username);
             if (topics != null) {
                 topics.remove(topic);
@@ -79,7 +76,7 @@ public class SubscribeServiceImpl implements SubscribeService {
                     mqttClientService.disconnectForUser(username);
                 }
             }
-            
+
             throw new RuntimeException("订阅失败: " + e.getMessage(), e);
         }
     }
