@@ -20,7 +20,7 @@ const ConnectionStatus: React.FC = () => {
       activeTimeoutId = setTimeout(() => controller?.abort(), STATUS_CHECK_TIMEOUT);
 
       try {
-        const response = await api.checkStatus(activeController.signal);
+        const response = await api.checkStatus(controller.signal);
         if (activeTimeoutId) clearTimeout(activeTimeoutId);
         activeTimeoutId = null;
         activeController = null;
