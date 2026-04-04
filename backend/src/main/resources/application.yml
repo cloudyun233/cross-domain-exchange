@@ -45,7 +45,6 @@ jwt:
 mqtt:
   broker:
     host: emqx
-    quic-port: 14567
     tls-port: 8883
     tcp-port: 1883
     client-id-prefix: cde-backend
@@ -55,7 +54,16 @@ mqtt:
   retry:
     max-attempts: 5
     initial-delay-ms: 1000
+    multiplier: 2.0
     max-delay-ms: 30000
+  connect:
+    timeout-seconds: 10
+  publish:
+    timeout-seconds: 5
+  subscribe:
+    timeout-seconds: 5
+  disconnect:
+    timeout-seconds: 5
 
 # EMQX HTTP API
 emqx:
