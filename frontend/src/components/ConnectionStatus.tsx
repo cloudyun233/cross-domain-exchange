@@ -6,7 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 const STATUS_CHECK_TIMEOUT = 3000;
 
 const ConnectionStatus: React.FC = () => {
-  const [connected, setConnected] = useState(false);
+  const [backendConnected, setBackendConnected] = useState(false);
+  const [emqxConnected, setEmqxConnected] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -22,16 +23,21 @@ const ConnectionStatus: React.FC = () => {
       activeTimeoutId = setTimeout(() => controller?.abort(), STATUS_CHECK_TIMEOUT);
 
       try {
-        const response = await api.checkStatus(controller.signal);
+        const [backendResp, emqxResp] = await Promise.all([
+          api.checkStatus(controller.signal),
+          api.checkEmqxStatus(controller.signal)
+        ]);
         if (activeTimeoutId) clearTimeout(activeTimeoutId);
         activeTimeoutId = null;
         activeController = null;
-        setConnected(response.status === 'ok');
+        setBackendConnected(backendResp.status === 'ok');
+        setEmqxConnected(emqxResp.status === 'online');
       } catch {
         if (activeTimeoutId) clearTimeout(activeTimeoutId);
         activeTimeoutId = null;
         activeController = null;
-        setConnected(false);
+        setBackendConnected(false);
+        setEmqxConnected(false);
       }
     };
 
@@ -60,8 +66,12 @@ const ConnectionStatus: React.FC = () => {
       gap: '12px',
     }}>
       <Badge 
-        status={connected ? 'success' : 'error'} 
-        text={connected ? '后端在线' : '后端离线'}
+        status={backendConnected ? 'success' : 'error'} 
+        text={backendConnected ? '后端在线' : '后端离线'}
+      />
+      <Badge 
+        status={emqxConnected ? 'success' : 'error'} 
+        text={emqxConnected ? 'EMQX在线' : 'EMQX离线'}
       />
       {user && user.clientId && (
         <Tooltip title="MQTT Client ID">

@@ -52,7 +52,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const api = {
   // Status
-  checkStatus: (signal?: AbortSignal) => request<StatusResponse>('/status', { signal }),
+  checkStatus: (signal?: AbortSignal) => request<StatusResponse>('/status/backend', { signal }),
+  checkEmqxStatus: (signal?: AbortSignal) => request<StatusResponse>('/status/emqx', { signal }),
 
   // Auth
   login: (data: { username: string; password: string }) =>
