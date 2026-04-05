@@ -25,6 +25,9 @@ public class SysUser {
     /** 角色类型 (producer/consumer/admin) */
     private String roleType;
 
+    /** MQTT Client ID */
+    private String clientId;
+
     /** 所属安全域(非数据库字段) */
     @TableField(exist = false)
     private SysDomain domain;

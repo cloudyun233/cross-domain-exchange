@@ -51,7 +51,7 @@ public class EmqxApiClient {
         try {
             String url = baseUrl + "/authorization/sources/built_in_database/rules/users";
             Map<String, Object> rule = new HashMap<>();
-            rule.put("username", acl.getClientId());
+            rule.put("username", acl.getUsername());
             rule.put("rules", List.of(Map.of(
                     "topic", acl.getTopicFilter(),
                     "action", acl.getAction(),
@@ -59,7 +59,7 @@ public class EmqxApiClient {
             )));
 
             exchange(url, HttpMethod.POST, List.of(rule), String.class);
-            log.info("ACL pushed to EMQX: client={}, topic={}", acl.getClientId(), acl.getTopicFilter());
+            log.info("ACL pushed to EMQX: username={}, topic={}", acl.getUsername(), acl.getTopicFilter());
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode().value() == 409) {
                 throw new RuntimeException("该用户已有相同规则");
@@ -109,7 +109,7 @@ public class EmqxApiClient {
 
             Map<String, List<Map<String, Object>>> grouped = new HashMap<>();
             for (SysTopicAcl acl : rules) {
-                grouped.computeIfAbsent(acl.getClientId(), key -> new ArrayList<>())
+                grouped.computeIfAbsent(acl.getUsername(), key -> new ArrayList<>())
                         .add(Map.of(
                                 "topic", acl.getTopicFilter(),
                                 "action", acl.getAction(),
@@ -117,16 +117,16 @@ public class EmqxApiClient {
                         ));
             }
 
-            grouped.forEach((clientId, aclRules) -> {
+            grouped.forEach((username, aclRules) -> {
                 try {
-                    String url = userUrlTemplate.replace("{username}", clientId);
+                    String url = userUrlTemplate.replace("{username}", username);
                     Map<String, Object> body = new HashMap<>();
-                    body.put("username", clientId);
+                    body.put("username", username);
                     body.put("rules", aclRules);
                     exchange(url, HttpMethod.PUT, body, String.class);
-                    log.debug("Pushed ACL rules to EMQX for user: {}", clientId);
+                    log.debug("Pushed ACL rules to EMQX for user: {}", username);
                 } catch (Exception e) {
-                    log.warn("Failed to push ACL rules for user {}: {}", clientId, e.getMessage());
+                    log.warn("Failed to push ACL rules for user {}: {}", username, e.getMessage());
                 }
             });
 

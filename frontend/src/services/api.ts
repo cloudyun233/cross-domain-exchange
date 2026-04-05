@@ -59,6 +59,8 @@ export const api = {
     request<any>('/auth/login', { method: 'POST', body: data }),
   refreshToken: () =>
     request<any>('/auth/refresh', { method: 'POST' }),
+  getCurrentUser: () =>
+    request<any>('/auth/me'),
 
   // Domains
   getDomains: () => request<any>('/domains'),

@@ -13,8 +13,8 @@ public class SysTopicAcl {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 客户端ID (支持*通配) */
-    private String clientId;
+    /** EMQX Username (用于ACL匹配,支持*通配) */
+    private String username;
 
     /** 主题过滤器 */
     private String topicFilter;

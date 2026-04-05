@@ -27,9 +27,9 @@ public class AclServiceImpl implements AclService {
     public List<SysTopicAcl> listAll() { return aclMapper.selectList(null); }
 
     @Override
-    public List<SysTopicAcl> listByClientId(String clientId) {
+    public List<SysTopicAcl> listByUsername(String username) {
         return aclMapper.selectList(new LambdaQueryWrapper<SysTopicAcl>()
-                .eq(SysTopicAcl::getClientId, clientId));
+                .eq(SysTopicAcl::getUsername, username));
     }
 
     @Override
@@ -37,8 +37,8 @@ public class AclServiceImpl implements AclService {
         aclMapper.insert(acl);
         // 实时推送到EMQX
         emqxApiClient.pushAclRule(acl);
-        log.info("ACL规则创建并推送: client={}, topic={}, action={}, access={}",
-                acl.getClientId(), acl.getTopicFilter(), acl.getAction(), acl.getAccessType());
+        log.info("ACL规则创建并推送: username={}, topic={}, action={}, access={}",
+                acl.getUsername(), acl.getTopicFilter(), acl.getAction(), acl.getAccessType());
         return acl;
     }
 

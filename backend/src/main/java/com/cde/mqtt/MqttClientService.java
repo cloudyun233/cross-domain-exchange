@@ -1,5 +1,8 @@
 package com.cde.mqtt;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.cde.entity.SysUser;
+import com.cde.mapper.SysUserMapper;
 import com.cde.util.MqttTopicUtil;
 import com.hivemq.client.mqtt.MqttClient;
 import com.hivemq.client.mqtt.MqttGlobalPublishFilter;
@@ -10,6 +13,7 @@ import com.hivemq.client.mqtt.datatypes.MqttQos;
 import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5PublishResult;
 import com.hivemq.client.mqtt.mqtt5.message.subscribe.suback.Mqtt5SubAck;
 import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -24,7 +28,10 @@ import java.util.function.BiConsumer;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class MqttClientService {
+
+    private final SysUserMapper sysUserMapper;
 
     @Value("${mqtt.broker.host:localhost}")
     private String brokerHost;
@@ -76,7 +83,9 @@ public class MqttClientService {
         disconnectForUser(username);
 
         try {
-            String clientId = username;
+            SysUser user = sysUserMapper.selectOne(
+                    new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
+            String clientId = user != null ? user.getClientId() : username;
 
             Mqtt5AsyncClient mqttClient = MqttClient.builder()
                     .useMqttVersion5()
@@ -129,7 +138,9 @@ public class MqttClientService {
 
     private boolean tryConnectTcpForUser(String username, String jwtToken) {
         try {
-            String clientId = username;
+            SysUser user = sysUserMapper.selectOne(
+                    new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
+            String clientId = user != null ? user.getClientId() : username;
 
             Mqtt5AsyncClient mqttClient = MqttClient.builder()
                     .useMqttVersion5()

@@ -58,7 +58,7 @@ const AclManage: React.FC = () => {
 
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60 },
-    { title: '客户端', dataIndex: 'clientId', render: (v: string) =>
+    { title: '用户名', dataIndex: 'username', render: (v: string) =>
       v === '*' ? <Tag color="volcano">* (全局)</Tag> : <Tag>{v}</Tag>
     },
     { title: '主题过滤器', dataIndex: 'topicFilter', render: (v: string) =>
@@ -116,7 +116,7 @@ const AclManage: React.FC = () => {
         onCancel={() => { setModalVisible(false); form.resetFields(); }}
         onOk={() => form.submit()}>
         <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item name="clientId" label="客户端ID" rules={[{ required: true }]}
+          <Form.Item name="username" label="用户名" rules={[{ required: true }]}
             extra="输入*表示全局规则">
             <Input placeholder="如: producer_swu 或 *" />
           </Form.Item>

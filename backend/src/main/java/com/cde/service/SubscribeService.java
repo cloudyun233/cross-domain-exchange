@@ -13,7 +13,4 @@ public interface SubscribeService {
 
     /** 取消订阅 */
     void unsubscribe(String username, String topic);
-
-    /** 推送消息到所有匹配的SSE连接 */
-    void pushMessage(String topic, String payload);
 }

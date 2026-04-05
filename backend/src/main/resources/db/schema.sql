@@ -18,13 +18,14 @@ CREATE TABLE IF NOT EXISTS sys_user (
     username       VARCHAR(128) NOT NULL UNIQUE COMMENT '用户账号(如 user_001)',
     password_hash  VARCHAR(256) NOT NULL COMMENT '加密后密码',
     role_type      VARCHAR(32)  NOT NULL COMMENT '角色(producer/consumer/admin)',
+    client_id      VARCHAR(128) NOT NULL COMMENT 'MQTT Client ID(如 username_001)',
     CONSTRAINT fk_user_domain FOREIGN KEY (domain_id) REFERENCES sys_domain(id)
 );
 
 -- 访问控制规则表
 CREATE TABLE IF NOT EXISTS sys_topic_acl (
     id            BIGINT AUTO_INCREMENT PRIMARY KEY,
-    client_id     VARCHAR(128) NOT NULL COMMENT '客户端ID(支持*通配)',
+    username      VARCHAR(128) NOT NULL COMMENT 'EMQX Username(用于ACL匹配,支持*通配)',
     topic_filter  VARCHAR(256) NOT NULL COMMENT '主题过滤器',
     action        VARCHAR(16)  NOT NULL COMMENT '动作(publish/subscribe/all)',
     access_type   VARCHAR(16)  NOT NULL COMMENT '访问类型(allow/deny)'

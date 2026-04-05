@@ -57,7 +57,10 @@ public class SubscribeServiceImpl implements SubscribeService {
                 }
             }
 
-            userTopics.computeIfAbsent(username, k -> new CopyOnWriteArrayList<>()).add(topic);
+            CopyOnWriteArrayList<String> topics = userTopics.computeIfAbsent(username, k -> new CopyOnWriteArrayList<>());
+            if (!topics.contains(topic)) {
+                topics.add(topic);
+            }
 
             mqttClientService.subscribeForUser(username, topic, qos, (t, payload) -> {
                 pushMessageToUser(username, t, payload);
@@ -96,27 +99,6 @@ public class SubscribeServiceImpl implements SubscribeService {
         }
 
         auditService.log(username, "unsubscribe", "取消订阅: " + topic, "backend");
-    }
-
-    @Override
-    public void pushMessage(String topic, String payload) {
-        userEmitters.forEach((username, emitter) -> {
-            CopyOnWriteArrayList<String> topics = userTopics.get(username);
-            if (topics != null && topics.stream().anyMatch(t -> MqttTopicUtil.matchesTopic(t, topic))) {
-                try {
-                    emitter.send(SseEmitter.event()
-                            .name("message")
-                            .data(Map.of(
-                                    "topic", topic,
-                                    "payload", payload,
-                                    "timestamp", System.currentTimeMillis()
-                            )));
-                } catch (IOException e) {
-                    log.warn("SSE推送失败, 清理连接: username={}", username);
-                    userEmitters.remove(username);
-                }
-            }
-        });
     }
 
     private void pushMessageToUser(String username, String topic, String payload) {

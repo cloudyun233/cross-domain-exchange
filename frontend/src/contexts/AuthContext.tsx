@@ -16,6 +16,7 @@ interface User {
   roleType: string;
   domainCode: string;
   domainName: string;
+  clientId: string;
 }
 
 interface AuthContextType {
@@ -53,8 +54,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (username: string, password: string) => {
     const result = await api.login({ username, password });
     if (!result.success) throw new Error(result.message);
-    const { token: t, username: uname, roleType, domainCode, domainName } = result.data;
-    const u: User = { username: uname, roleType, domainCode, domainName };
+    const { token: t, username: uname, roleType, domainCode, domainName, clientId } = result.data;
+    const u: User = { username: uname, roleType, domainCode, domainName, clientId };
     setToken(t);
     setUser(u);
     sessionStorage.setItem('token', t);

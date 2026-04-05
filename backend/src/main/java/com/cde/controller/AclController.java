@@ -18,9 +18,9 @@ public class AclController {
         return ApiResponse.ok(aclService.listAll());
     }
 
-    @GetMapping("/client/{clientId}")
-    public ApiResponse<List<SysTopicAcl>> listByClient(@PathVariable String clientId) {
-        return ApiResponse.ok(aclService.listByClientId(clientId));
+    @GetMapping("/username/{username}")
+    public ApiResponse<List<SysTopicAcl>> listByUsername(@PathVariable String username) {
+        return ApiResponse.ok(aclService.listByUsername(username));
     }
 
     @PostMapping

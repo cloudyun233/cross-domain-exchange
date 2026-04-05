@@ -16,4 +16,5 @@ public class LoginResponse {
     private String roleType;
     private String domainCode;
     private String domainName;
+    private String clientId;
 }
