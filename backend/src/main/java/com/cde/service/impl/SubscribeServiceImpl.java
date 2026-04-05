@@ -3,6 +3,7 @@ package com.cde.service.impl;
 import com.cde.mqtt.MqttClientService;
 import com.cde.service.AuditService;
 import com.cde.service.SubscribeService;
+import com.cde.util.MqttTopicUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -101,7 +102,7 @@ public class SubscribeServiceImpl implements SubscribeService {
     public void pushMessage(String topic, String payload) {
         userEmitters.forEach((username, emitter) -> {
             CopyOnWriteArrayList<String> topics = userTopics.get(username);
-            if (topics != null && topics.stream().anyMatch(t -> matchesTopic(t, topic))) {
+            if (topics != null && topics.stream().anyMatch(t -> MqttTopicUtil.matchesTopic(t, topic))) {
                 try {
                     emitter.send(SseEmitter.event()
                             .name("message")
@@ -136,17 +137,5 @@ public class SubscribeServiceImpl implements SubscribeService {
         }
     }
 
-    private boolean matchesTopic(String filter, String topic) {
-        if (filter.equals(topic) || "#".equals(filter)) {
-            return true;
-        }
-        String[] fp = filter.split("/");
-        String[] tp = topic.split("/");
-        for (int i = 0; i < fp.length; i++) {
-            if ("#".equals(fp[i])) return true;
-            if (i >= tp.length) return false;
-            if (!"+".equals(fp[i]) && !fp[i].equals(tp[i])) return false;
-        }
-        return fp.length == tp.length;
-    }
+
 }

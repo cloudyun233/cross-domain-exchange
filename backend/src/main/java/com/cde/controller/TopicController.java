@@ -1,9 +1,10 @@
 package com.cde.controller;
 
 import com.cde.dto.ApiResponse;
-import com.cde.service.AuthService;
 import com.cde.service.TopicService;
 import com.cde.service.converter.DataConverter;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
@@ -20,6 +21,7 @@ public class TopicController {
 
     private final TopicService topicService;
     private final List<DataConverter> dataConverters;
+    private final ObjectMapper objectMapper;
 
     @GetMapping("/tree")
     public ApiResponse<List<Map<String, Object>>> getTopicTree() {
@@ -58,9 +60,19 @@ public class TopicController {
 
         // 如果发生了转换，在payload中附带来源标记
         if (!format.equalsIgnoreCase("json")) {
-            convertedPayload = "{\"_meta\":{\"source_format\":\"" + sourceFormat
-                    + "\",\"converter\":\"" + sourceFormat.toUpperCase() + "-Converter\"},"
-                    + "\"data\":" + convertedPayload + "}";
+            try {
+                Map<String, Object> meta = Map.of(
+                        "source_format", sourceFormat,
+                        "converter", sourceFormat.toUpperCase() + "-Converter"
+                );
+                Map<String, Object> wrapper = Map.of(
+                        "_meta", meta,
+                        "data", objectMapper.readValue(convertedPayload, Object.class)
+                );
+                convertedPayload = objectMapper.writeValueAsString(wrapper);
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException("Failed to wrap converted payload", e);
+            }
         }
 
         // ACL校验由EMQX全权负责，使用用户级连接发布

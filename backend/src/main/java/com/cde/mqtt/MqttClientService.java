@@ -1,5 +1,6 @@
 package com.cde.mqtt;
 
+import com.cde.util.MqttTopicUtil;
 import com.hivemq.client.mqtt.MqttClient;
 import com.hivemq.client.mqtt.MqttGlobalPublishFilter;
 import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient;
@@ -112,12 +113,16 @@ public class MqttClientService {
             log.info("MQTT connected for user {} over TLS: clientId={}", username, clientId);
 
         } catch (TimeoutException e) {
-            log.warn("MQTT connection timeout for user {} after {} seconds", username, connectTimeoutSeconds);
+            log.warn("MQTT TLS connection timeout for user {} after {} seconds, trying TCP", username, connectTimeoutSeconds);
+            boolean tcpSuccess = tryConnectTcpForUser(username, jwtToken);
+            if (!tcpSuccess) {
+                throw new RuntimeException("Both TLS and TCP connection attempts failed for user " + username, e);
+            }
         } catch (Exception e) {
             log.warn("MQTT TLS connection failed for user {}, trying TCP: {}", username, e.getMessage());
             boolean tcpSuccess = tryConnectTcpForUser(username, jwtToken);
             if (!tcpSuccess) {
-                log.warn("Both TLS and TCP connection attempts failed for user {}", username);
+                throw new RuntimeException("Both TLS and TCP connection attempts failed for user " + username, e);
             }
         }
     }
@@ -173,7 +178,7 @@ public class MqttClientService {
             log.debug("MQTT received publish for user: topic={}, payloadLength={}", topic, payload.length());
 
             ctx.callbacks.forEach((filter, callback) -> {
-                if (matchesTopic(filter, topic)) {
+                if (MqttTopicUtil.matchesTopic(filter, topic)) {
                     try {
                         callback.accept(topic, payload);
                     } catch (Exception e) {
@@ -198,9 +203,9 @@ public class MqttClientService {
                 log.info("MQTT client auto-reconnected for user {}, updating state", username);
                 ctx.connected = true;
             }
+            sendSubscribe(ctx.client, topic, qos);
             ctx.callbacks.put(topic, callback);
             ctx.qosMap.put(topic, qos);
-            sendSubscribe(ctx.client, topic, qos);
         }
         log.info("User {} subscribed to topic {}, qos={}", username, topic, qos);
     }
@@ -333,26 +338,5 @@ public class MqttClientService {
     @PreDestroy
     public void destroy() {
         userContexts.keySet().forEach(this::disconnectForUser);
-    }
-
-    private boolean matchesTopic(String filter, String topic) {
-        if (filter.equals(topic) || "#".equals(filter)) {
-            return true;
-        }
-
-        String[] filterParts = filter.split("/");
-        String[] topicParts = topic.split("/");
-        for (int i = 0; i < filterParts.length; i++) {
-            if ("#".equals(filterParts[i])) {
-                return true;
-            }
-            if (i >= topicParts.length) {
-                return false;
-            }
-            if (!"+".equals(filterParts[i]) && !filterParts[i].equals(topicParts[i])) {
-                return false;
-            }
-        }
-        return filterParts.length == topicParts.length;
     }
 }
