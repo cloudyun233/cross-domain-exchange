@@ -1,0 +1,12 @@
+# Docker 环境配置
+# 后端和 EMQX 都在 Docker 中，使用 Docker 网络主机名
+
+# MQTT Broker
+mqtt:
+  broker:
+    host: emqx
+
+# EMQX HTTP API
+emqx:
+  api:
+    base-url: http://emqx:18083/api/v5

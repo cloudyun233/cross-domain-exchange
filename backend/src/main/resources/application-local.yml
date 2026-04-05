@@ -1,0 +1,12 @@
+# 本地开发环境配置
+# 后端在宿主机运行，EMQX 在 Docker 中
+
+# MQTT Broker
+mqtt:
+  broker:
+    host: localhost
+
+# EMQX HTTP API
+emqx:
+  api:
+    base-url: http://localhost:18083/api/v5

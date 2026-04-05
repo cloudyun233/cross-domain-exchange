@@ -5,6 +5,12 @@ spring:
   application:
     name: cross-domain-exchange
 
+  # Spring Profile 配置
+  # 本地开发环境: local (默认)
+  # Docker 环境: docker
+  profiles:
+    active: local
+
   datasource:
     url: jdbc:h2:mem:crossdomaindb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
@@ -44,7 +50,7 @@ jwt:
 # MQTT Broker
 mqtt:
   broker:
-    host: emqx
+    host: localhost
     tls-port: 8883
     tcp-port: 1883
     client-id-prefix: cde-backend
@@ -68,9 +74,9 @@ mqtt:
 # EMQX HTTP API
 emqx:
   api:
-    base-url: http://emqx:18083/api/v5
-    username: admin
-    password: public
+    base-url: http://localhost:18083/api/v5
+    api-key: 887375daec62a9f0
+    secret-key: 160h9C9CgULGqoGqUza4bTlULhUJ1hkMk9B2bA73w9BW2VA
   monitor:
     poll-interval-ms: 5000
 

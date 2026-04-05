@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Base64;
 
 /**
  * EMQX HTTP API client.
@@ -28,18 +29,17 @@ public class EmqxApiClient {
     @Value("${emqx.api.base-url:http://localhost:18083/api/v5}")
     private String baseUrl;
 
-    @Value("${emqx.api.username:admin}")
-    private String username;
+    @Value("${emqx.api.api-key}")
+    private String apiKey;
 
-    @Value("${emqx.api.password:public}")
-    private String password;
+    @Value("${emqx.api.secret-key}")
+    private String secretKey;
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private volatile String apiToken;
 
     public boolean isApiReady() {
         try {
-            getApiToken(false);
+            exchange(baseUrl + "/nodes", HttpMethod.GET, null, String.class);
             return true;
         } catch (Exception e) {
             log.debug("EMQX API is not ready yet: {}", e.getMessage());
@@ -60,18 +60,51 @@ public class EmqxApiClient {
 
             exchange(url, HttpMethod.POST, List.of(rule), String.class);
             log.info("ACL pushed to EMQX: client={}, topic={}", acl.getClientId(), acl.getTopicFilter());
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode().value() == 409) {
+                throw new RuntimeException("该用户已有相同规则");
+            }
+            log.warn("Failed to push ACL to EMQX: {}", e.getMessage());
+            throw new RuntimeException("Failed to push ACL to EMQX: " + e.getMessage());
         } catch (Exception e) {
             log.warn("Failed to push ACL to EMQX: {}", e.getMessage());
+            throw new RuntimeException("Failed to push ACL to EMQX: " + e.getMessage());
         }
     }
 
     public void syncAllAclRules(List<SysTopicAcl> rules) {
         try {
-            String url = baseUrl + "/authorization/sources/built_in_database/rules/users";
+            String sourceUrl = baseUrl + "/authorization/sources/built_in_database";
+            String rulesUrl = baseUrl + "/authorization/sources/built_in_database/rules";
+            String userUrlTemplate = baseUrl + "/authorization/sources/built_in_database/rules/users/{username}";
+
             try {
-                exchange(url, HttpMethod.DELETE, null, String.class);
+                Map<String, Object> disableBody = Map.of(
+                        "type", "built_in_database",
+                        "enable", false
+                );
+                exchange(sourceUrl, HttpMethod.PUT, disableBody, String.class);
+                log.debug("Disabled built_in_database authorization source");
             } catch (Exception e) {
-                log.debug("Ignoring EMQX ACL cleanup failure before full sync: {}", e.getMessage());
+                log.debug("Ignoring failure to disable built_in_database: {}", e.getMessage());
+            }
+
+            try {
+                exchange(rulesUrl, HttpMethod.DELETE, null, String.class);
+                log.debug("Cleared all ACL rules from built_in_database");
+            } catch (Exception e) {
+                log.debug("Ignoring EMQX ACL cleanup failure: {}", e.getMessage());
+            }
+
+            try {
+                Map<String, Object> enableBody = Map.of(
+                        "type", "built_in_database",
+                        "enable", true
+                );
+                exchange(sourceUrl, HttpMethod.PUT, enableBody, String.class);
+                log.debug("Enabled built_in_database authorization source");
+            } catch (Exception e) {
+                log.debug("Ignoring failure to enable built_in_database: {}", e.getMessage());
             }
 
             Map<String, List<Map<String, Object>>> grouped = new HashMap<>();
@@ -84,17 +117,19 @@ public class EmqxApiClient {
                         ));
             }
 
-            List<Map<String, Object>> body = new ArrayList<>();
             grouped.forEach((clientId, aclRules) -> {
-                Map<String, Object> entry = new HashMap<>();
-                entry.put("username", clientId);
-                entry.put("rules", aclRules);
-                body.add(entry);
+                try {
+                    String url = userUrlTemplate.replace("{username}", clientId);
+                    Map<String, Object> body = new HashMap<>();
+                    body.put("username", clientId);
+                    body.put("rules", aclRules);
+                    exchange(url, HttpMethod.PUT, body, String.class);
+                    log.debug("Pushed ACL rules to EMQX for user: {}", clientId);
+                } catch (Exception e) {
+                    log.warn("Failed to push ACL rules for user {}: {}", clientId, e.getMessage());
+                }
             });
 
-            if (!body.isEmpty()) {
-                exchange(url, HttpMethod.POST, body, String.class);
-            }
             log.info("ACL full sync to EMQX completed, rules={}", rules.size());
         } catch (Exception e) {
             log.warn("Failed to sync ACL rules to EMQX: {}", e.getMessage());
@@ -137,59 +172,19 @@ public class EmqxApiClient {
     }
 
     private <T> ResponseEntity<T> exchange(String url, HttpMethod method, Object body, Class<T> responseType) {
-        try {
-            return doExchange(url, method, body, responseType, false);
-        } catch (HttpClientErrorException.Unauthorized e) {
-            return doExchange(url, method, body, responseType, true);
-        }
-    }
-
-    private <T> ResponseEntity<T> doExchange(
-            String url,
-            HttpMethod method,
-            Object body,
-            Class<T> responseType,
-            boolean forceRefreshToken
-    ) {
         HttpEntity<?> entity = body == null
-                ? new HttpEntity<>(createHeaders(forceRefreshToken))
-                : new HttpEntity<>(body, createHeaders(forceRefreshToken));
+                ? new HttpEntity<>(createHeaders())
+                : new HttpEntity<>(body, createHeaders());
         return restTemplate.exchange(url, method, entity, responseType);
     }
 
-    private HttpHeaders createHeaders(boolean forceRefreshToken) {
+    private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(getApiToken(forceRefreshToken));
+        String auth = apiKey + ":" + secretKey;
+        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
+        headers.set("Authorization", "Basic " + encodedAuth);
         return headers;
-    }
-
-    @SuppressWarnings("unchecked")
-    private synchronized String getApiToken(boolean forceRefreshToken) {
-        if (!forceRefreshToken && StringUtils.hasText(apiToken)) {
-            return apiToken;
-        }
-
-        Map<String, String> request = Map.of(
-                "username", username,
-                "password", password
-        );
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        ResponseEntity<Map> response = restTemplate.exchange(
-                baseUrl + "/login",
-                HttpMethod.POST,
-                new HttpEntity<>(request, headers),
-                Map.class
-        );
-
-        Object token = response.getBody() == null ? null : response.getBody().get("token");
-        if (!(token instanceof String tokenValue) || !StringUtils.hasText(tokenValue)) {
-            throw new IllegalStateException("EMQX login did not return a token");
-        }
-
-        apiToken = tokenValue;
-        return apiToken;
     }
 
     private Map<String, Object> defaultStats() {
