@@ -3,7 +3,6 @@ import { EventSourcePolyfill } from 'event-source-polyfill';
 import { Card, Input, Button, Select, Typography, Tag, List, Space, message, Badge, Empty } from 'antd';
 import { PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
 
 const { Title, Text } = Typography;
 
@@ -15,7 +14,6 @@ interface ReceivedMessage {
 }
 
 const Subscribe: React.FC = () => {
-  const { deviceId } = useAuth();
   const [topic, setTopic] = useState('/cross_domain/medical/#');
   const [qos, setQos] = useState(1);
   const [listening, setListening] = useState(false);
@@ -35,7 +33,7 @@ const Subscribe: React.FC = () => {
       esRef.current = null;
     }
 
-    const es = api.createSubscribeStream(topic, qos, deviceId);
+    const es = api.createSubscribeStream(topic, qos);
     esRef.current = es;
     reconnectAttemptsRef.current = 0;
 
