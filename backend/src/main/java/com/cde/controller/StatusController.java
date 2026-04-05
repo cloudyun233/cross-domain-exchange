@@ -21,7 +21,11 @@ public class StatusController {
 
     @GetMapping("/emqx")
     public StatusResponse emqxStatus() {
-        boolean online = emqxApiClient.isApiReady();
-        return new StatusResponse(online ? "online" : "offline");
+        try {
+            boolean online = emqxApiClient.isApiReady();
+            return new StatusResponse(online ? "online" : "offline");
+        } catch (Exception e) {
+            return new StatusResponse("offline");
+        }
     }
 }
