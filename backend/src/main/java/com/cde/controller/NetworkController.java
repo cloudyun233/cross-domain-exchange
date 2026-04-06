@@ -4,9 +4,11 @@ import com.cde.dto.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @RestController
@@ -14,26 +16,58 @@ import java.util.Map;
 @PreAuthorize("hasRole('ADMIN')")
 public class NetworkController {
 
+    private static final int PROCESS_TIMEOUT_SECONDS = 30;
+
+    /**
+     * 执行命令并返回输出，带超时控制
+     */
+    private String executeCommand(String command, int timeoutSeconds) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("sh", "-c", command);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+
+        StringBuilder output = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+            }
+        }
+
+        boolean completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+        if (!completed) {
+            process.destroyForcibly();
+            throw new RuntimeException("命令执行超时（" + timeoutSeconds + "秒）");
+        }
+
+        int exitCode = process.exitValue();
+        if (exitCode != 0) {
+            throw new RuntimeException("命令执行失败，退出码: " + exitCode + "，输出: " + output);
+        }
+
+        return output.toString().trim();
+    }
+
     /**
      * 自动检测网络接口（优先使用 eth0，其次是默认路由接口）
      */
     private String detectNetworkInterface() {
         try {
             // 先尝试 eth0
-            ProcessBuilder checkEth0 = new ProcessBuilder("sh", "-c", "ip link show eth0 2>/dev/null");
-            Process p = checkEth0.start();
-            if (p.waitFor() == 0) {
+            try {
+                executeCommand("ip link show eth0 2>/dev/null", PROCESS_TIMEOUT_SECONDS);
                 return "eth0";
+            } catch (Exception e) {
+                log.debug("eth0 不存在，尝试获取默认路由接口");
             }
-            
+
             // 尝试获取默认路由接口
-            ProcessBuilder getDefaultRoute = new ProcessBuilder("sh", "-c", 
-                "ip route show default | awk '/default/ {print $5}'");
-            p = getDefaultRoute.start();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
-            String iface = reader.readLine();
-            if (iface != null && !iface.trim().isEmpty()) {
-                return iface.trim();
+            String output = executeCommand(
+                "ip route show default 2>/dev/null | awk '/default/ {print $5}'", 
+                PROCESS_TIMEOUT_SECONDS);
+            
+            if (output != null && !output.trim().isEmpty()) {
+                return output.trim();
             }
         } catch (Exception e) {
             log.warn("自动检测网络接口失败，使用默认 eth0", e);
@@ -49,7 +83,7 @@ public class NetworkController {
         try {
             String iface = detectNetworkInterface();
             log.info("检测到网络接口: {}", iface);
-            
+
             String cmd;
             if (delayMs == 0 && lossPercent == 0 && bandwidthMbps == 0) {
                 cmd = String.format("tc qdisc del dev %s root 2>/dev/null; echo 'Network reset'", iface);
@@ -62,21 +96,8 @@ public class NetworkController {
                 log.info("弱网模拟命令: {}", cmd);
             }
 
-            ProcessBuilder pb = new ProcessBuilder("sh", "-c", cmd);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            
-            // 读取输出以便调试
-            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                log.debug("tc 输出: {}", line);
-            }
-            
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                throw new RuntimeException("tc 命令执行失败，退出码: " + exitCode);
-            }
+            String output = executeCommand(cmd, PROCESS_TIMEOUT_SECONDS);
+            log.debug("tc 命令输出: {}", output);
 
             String scenario = getScenarioName(delayMs, lossPercent, bandwidthMbps);
             return ApiResponse.ok(String.format("弱网模拟已设置: %s (接口: %s)", scenario, iface), null);

@@ -75,8 +75,8 @@ mqtt:
 emqx:
   api:
     base-url: http://localhost:18083/api/v5
-    api-key: 887375daec62a9f0
-    secret-key: 160h9C9CgULGqoGqUza4bTlULhUJ1hkMk9B2bA73w9BW2VA
+    api-key: 0a1d4ce52c8e9046
+    secret-key: srgVlxKLPyRZHgPycte2a2RKq1mRBnTpmiglUO9AK2aAA
   monitor:
     poll-interval-ms: 5000
 
