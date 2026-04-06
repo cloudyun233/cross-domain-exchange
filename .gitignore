@@ -84,10 +84,6 @@ dist/
 dist-ssr/
 *.local
 
-# Docker
-.dockerignore
-Dockerfile*
-docker-compose.override.yml
 
 # EMQX
 emqx/data/
