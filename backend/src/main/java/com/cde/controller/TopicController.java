@@ -1,16 +1,25 @@
 package com.cde.controller;
 
 import com.cde.dto.ApiResponse;
+import com.cde.exception.BusinessException;
 import com.cde.service.TopicService;
 import com.cde.service.converter.DataConverter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Slf4j
@@ -28,55 +37,69 @@ public class TopicController {
         return ApiResponse.ok(topicService.buildDomainTopicTree());
     }
 
-    /**
-     * 发布消息 (论文4.4.2: 含数据格式转换拦截)
-     * ACL校验由EMQX全权负责
-     */
     @PostMapping("/publish")
     public ApiResponse<Void> publish(
             @RequestParam String topic,
             @RequestBody String payload,
             @RequestParam(defaultValue = "1") int qos,
-            @RequestParam(defaultValue = "json") String format,
+            @RequestParam(defaultValue = "structured") String format,
             @RequestHeader("Authorization") String authHeader,
             Authentication auth) {
 
         String username = auth.getName();
         String token = authHeader.replace("Bearer ", "");
+        String actualFormat = resolveActualFormat(format, payload);
+        String convertedPayload = convertPayload(payload, actualFormat);
 
-        // 数据格式转换 (论文4.4.2: 拦截器机制)
-        String convertedPayload = payload;
-        String sourceFormat = format;
-        if (!"json".equalsIgnoreCase(format)) {
-            for (DataConverter converter : dataConverters) {
-                if (converter.supports(format)) {
-                    convertedPayload = converter.convertToJson(payload);
-                    sourceFormat = format;
-                    log.info("数据格式转换: {} → JSON, converter={}", format, converter.getClass().getSimpleName());
-                    break;
-                }
-            }
-        }
-
-        // 如果发生了转换，在payload中附带来源标记
-        if (!format.equalsIgnoreCase("json")) {
-            try {
-                Map<String, Object> meta = Map.of(
-                        "source_format", sourceFormat,
-                        "converter", sourceFormat.toUpperCase() + "-Converter"
-                );
-                Map<String, Object> wrapper = Map.of(
-                        "_meta", meta,
-                        "data", objectMapper.readValue(convertedPayload, Object.class)
-                );
-                convertedPayload = objectMapper.writeValueAsString(wrapper);
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException("Failed to wrap converted payload", e);
-            }
-        }
-
-        // ACL校验由EMQX全权负责，使用用户级连接发布
         topicService.publishMsg(topic, convertedPayload, qos, username, token);
         return ApiResponse.ok("消息发布成功", null);
+    }
+
+    private String resolveActualFormat(String format, String payload) {
+        String normalizedFormat = format == null ? "structured" : format.trim().toLowerCase(Locale.ROOT);
+        return switch (normalizedFormat) {
+            case "structured" -> detectStructuredFormat(payload);
+            case "json", "xml", "text" -> normalizedFormat;
+            default -> throw new BusinessException(HttpStatus.BAD_REQUEST, "不支持的数据格式: " + format);
+        };
+    }
+
+    private String detectStructuredFormat(String payload) {
+        String trimmed = payload == null ? "" : payload.trim();
+        if (trimmed.isEmpty()) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "消息内容不能为空");
+        }
+        return trimmed.startsWith("<") ? "xml" : "json";
+    }
+
+    private String convertPayload(String payload, String actualFormat) {
+        if ("text".equals(actualFormat)) {
+            return payload;
+        }
+
+        DataConverter converter = dataConverters.stream()
+                .filter(item -> item.supports(actualFormat))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST, "未找到可用的数据格式转换器: " + actualFormat));
+
+        String convertedPayload = converter.convertToJson(payload);
+        if (!"xml".equals(actualFormat)) {
+            return convertedPayload;
+        }
+
+        try {
+            Map<String, Object> meta = Map.of(
+                    "source_format", actualFormat,
+                    "converter", actualFormat.toUpperCase(Locale.ROOT) + "-Converter"
+            );
+            Map<String, Object> wrapper = Map.of(
+                    "_meta", meta,
+                    "data", objectMapper.readValue(convertedPayload, Object.class)
+            );
+            log.info("数据格式转换: {} -> JSON", actualFormat);
+            return objectMapper.writeValueAsString(wrapper);
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "XML 转换后的消息封装失败: " + e.getOriginalMessage());
+        }
     }
 }

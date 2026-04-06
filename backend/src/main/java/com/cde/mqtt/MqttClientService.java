@@ -2,27 +2,37 @@ package com.cde.mqtt;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cde.entity.SysUser;
+import com.cde.exception.BusinessException;
 import com.cde.mapper.SysUserMapper;
 import com.cde.util.MqttTopicUtil;
 import com.hivemq.client.mqtt.MqttClient;
 import com.hivemq.client.mqtt.MqttGlobalPublishFilter;
+import com.hivemq.client.mqtt.datatypes.MqttQos;
 import com.hivemq.client.mqtt.mqtt5.Mqtt5AsyncClient;
+import com.hivemq.client.mqtt.mqtt5.exceptions.Mqtt5PubAckException;
+import com.hivemq.client.mqtt.mqtt5.exceptions.Mqtt5SubAckException;
 import com.hivemq.client.mqtt.mqtt5.message.auth.Mqtt5SimpleAuth;
 import com.hivemq.client.mqtt.mqtt5.message.connect.connack.Mqtt5ConnAck;
-import com.hivemq.client.mqtt.datatypes.MqttQos;
 import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5PublishResult;
+import com.hivemq.client.mqtt.mqtt5.message.publish.puback.Mqtt5PubAck;
+import com.hivemq.client.mqtt.mqtt5.message.publish.puback.Mqtt5PubAckReasonCode;
 import com.hivemq.client.mqtt.mqtt5.message.subscribe.suback.Mqtt5SubAck;
+import com.hivemq.client.mqtt.mqtt5.message.subscribe.suback.Mqtt5SubAckReasonCode;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
@@ -89,20 +99,7 @@ public class MqttClientService {
         try {
             String clientId = resolveClientId(username);
             Mqtt5AsyncClient mqttClient = buildTlsClient(clientId);
-
-            Mqtt5SimpleAuth simpleAuth = Mqtt5SimpleAuth.builder()
-                    .username(username)
-                    .password(jwtToken.getBytes(StandardCharsets.UTF_8))
-                    .build();
-
-            CompletableFuture<Mqtt5ConnAck> connectFuture = mqttClient.toAsync()
-                    .connectWith()
-                    .simpleAuth(simpleAuth)
-                    .cleanStart(false)
-                    .sessionExpiryInterval(3600)
-                    .keepAlive(60)
-                    .send();
-            connectFuture.get(connectTimeoutSeconds, TimeUnit.SECONDS);
+            connectClient(mqttClient, username, jwtToken);
 
             UserMqttContext ctx = new UserMqttContext(mqttClient);
             synchronized (ctx.lock) {
@@ -114,18 +111,17 @@ public class MqttClientService {
 
             log.info("MQTT connected for user {} over TLS: clientId={}, insecureTrustAll={}",
                     username, clientId, insecureTrustAll);
-
         } catch (TimeoutException e) {
             log.warn("MQTT TLS connection timeout for user {} after {} seconds, trying TCP", username, connectTimeoutSeconds);
-            boolean tcpSuccess = tryConnectTcpForUser(username, jwtToken);
-            if (!tcpSuccess) {
-                throw new RuntimeException("Both TLS and TCP connection attempts failed for user " + username, e);
+            if (!tryConnectTcpForUser(username, jwtToken)) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "MQTT Broker 连接失败");
             }
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             log.warn("MQTT TLS connection failed for user {}, trying TCP: {}", username, e.getMessage());
-            boolean tcpSuccess = tryConnectTcpForUser(username, jwtToken);
-            if (!tcpSuccess) {
-                throw new RuntimeException("Both TLS and TCP connection attempts failed for user " + username, e);
+            if (!tryConnectTcpForUser(username, jwtToken)) {
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "MQTT Broker 连接失败");
             }
         }
     }
@@ -133,7 +129,6 @@ public class MqttClientService {
     private boolean tryConnectTcpForUser(String username, String jwtToken) {
         try {
             String clientId = resolveClientId(username);
-
             Mqtt5AsyncClient mqttClient = MqttClient.builder()
                     .useMqttVersion5()
                     .identifier(clientId)
@@ -141,6 +136,8 @@ public class MqttClientService {
                     .serverPort(tcpPort)
                     .automaticReconnectWithDefaultConfig()
                     .buildAsync();
+
+            connectClient(mqttClient, username, jwtToken);
 
             UserMqttContext ctx = new UserMqttContext(mqttClient);
             synchronized (ctx.lock) {
@@ -152,11 +149,27 @@ public class MqttClientService {
 
             log.info("MQTT connected for user {} over TCP: clientId={}", username, clientId);
             return true;
-
         } catch (Exception e) {
             log.error("MQTT TCP connection failed for user {}: {}", username, e.getMessage());
             return false;
         }
+    }
+
+    private void connectClient(Mqtt5AsyncClient client, String username, String jwtToken) throws Exception {
+        Mqtt5SimpleAuth simpleAuth = Mqtt5SimpleAuth.builder()
+                .username(username)
+                .password(jwtToken.getBytes(StandardCharsets.UTF_8))
+                .build();
+
+        CompletableFuture<Mqtt5ConnAck> connectFuture = client.toAsync()
+                .connectWith()
+                .simpleAuth(simpleAuth)
+                .cleanStart(false)
+                .sessionExpiryInterval(3600)
+                .keepAlive(60)
+                .send();
+
+        connectFuture.get(connectTimeoutSeconds, TimeUnit.SECONDS);
     }
 
     private String resolveClientId(String username) {
@@ -274,12 +287,6 @@ public class MqttClientService {
         }
     }
 
-    /**
-     * 检查指定用户的 MQTT 连接状态
-     *
-     * @param username 用户名
-     * @return true 如果该用户有活跃的 MQTT 连接
-     */
     public boolean isUserConnected(String username) {
         UserMqttContext ctx = userContexts.get(username);
         if (ctx == null) {
@@ -304,16 +311,16 @@ public class MqttClientService {
 
             future.get(publishTimeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to publish MQTT message: " + e.getMessage(), e);
+            throw mapPublishException(topic, e);
         }
     }
 
     private void sendSubscribe(Mqtt5AsyncClient client, String topic, int qos) {
-        try {
-            if (client == null) {
-                throw new IllegalStateException("MQTT broker is not connected");
-            }
+        if (client == null) {
+            throw new IllegalStateException("MQTT broker is not connected");
+        }
 
+        try {
             CompletableFuture<Mqtt5SubAck> future = client.toAsync()
                     .subscribeWith()
                     .topicFilter(topic)
@@ -322,25 +329,81 @@ public class MqttClientService {
 
             future.get(subscribeTimeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to subscribe topic " + topic + ": " + e.getMessage(), e);
+            throw mapSubscribeException(topic, e);
         }
     }
 
-    /**
-     * 检查后端是否有活跃的 MQTT 连接（用于运维监控）
-     *
-     * @return true 如果至少有一个用户存在活跃的 MQTT 连接
-     */
+    private RuntimeException mapPublishException(String topic, Exception e) {
+        Mqtt5PubAckException pubAckException = findCause(e, Mqtt5PubAckException.class);
+        if (pubAckException != null) {
+            Mqtt5PubAck ack = pubAckException.getMqttMessage();
+            return switch (ack.getReasonCode()) {
+                case NOT_AUTHORIZED -> new BusinessException(HttpStatus.FORBIDDEN, "无权发布该主题");
+                case TOPIC_NAME_INVALID -> new BusinessException(HttpStatus.BAD_REQUEST, "发布主题不合法: " + topic);
+                case PAYLOAD_FORMAT_INVALID -> new BusinessException(HttpStatus.BAD_REQUEST, "消息格式不合法");
+                default -> new BusinessException(HttpStatus.BAD_REQUEST, "消息发布失败: " + describePublishReason(ack));
+            };
+        }
+
+        Throwable root = unwrap(e);
+        return new BusinessException(HttpStatus.BAD_GATEWAY, "消息发布失败: " + root.getMessage());
+    }
+
+    private RuntimeException mapSubscribeException(String topic, Exception e) {
+        Mqtt5SubAckException subAckException = findCause(e, Mqtt5SubAckException.class);
+        if (subAckException != null) {
+            Mqtt5SubAck ack = subAckException.getMqttMessage();
+            List<Mqtt5SubAckReasonCode> reasonCodes = ack.getReasonCodes();
+            if (reasonCodes.contains(Mqtt5SubAckReasonCode.NOT_AUTHORIZED)) {
+                return new BusinessException(HttpStatus.FORBIDDEN, "无权订阅该主题");
+            }
+            if (reasonCodes.contains(Mqtt5SubAckReasonCode.TOPIC_FILTER_INVALID)) {
+                return new BusinessException(HttpStatus.BAD_REQUEST, "订阅主题不合法: " + topic);
+            }
+            return new BusinessException(HttpStatus.BAD_REQUEST, "订阅失败: " + describeSubscribeReason(ack));
+        }
+
+        Throwable root = unwrap(e);
+        return new BusinessException(HttpStatus.BAD_GATEWAY, "订阅失败: " + root.getMessage());
+    }
+
+    private String describePublishReason(Mqtt5PubAck ack) {
+        Optional<String> reasonString = ack.getReasonString().map(Object::toString);
+        return reasonString.orElse(ack.getReasonCode().name());
+    }
+
+    private String describeSubscribeReason(Mqtt5SubAck ack) {
+        Optional<String> reasonString = ack.getReasonString().map(Object::toString);
+        if (reasonString.isPresent()) {
+            return reasonString.get();
+        }
+        return ack.getReasonCodes().stream().map(Enum::name).reduce((left, right) -> left + "," + right).orElse("UNKNOWN");
+    }
+
+    private Throwable unwrap(Throwable throwable) {
+        Throwable current = throwable;
+        while ((current instanceof ExecutionException || current instanceof java.util.concurrent.CompletionException)
+                && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private <T extends Throwable> T findCause(Throwable throwable, Class<T> targetType) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (targetType.isInstance(current)) {
+                return targetType.cast(current);
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
     public boolean isConnected() {
         return userContexts.values().stream().anyMatch(ctx -> ctx.connected && ctx.client.getState().isConnected());
     }
 
-    /**
-     * 获取当前活跃连接的协议类型（用于运维监控）
-     * 注意：当多个用户使用不同协议连接时，只返回第一个活跃连接的协议
-     *
-     * @return "TLS"、"TCP" 或 "未连接"
-     */
     public String getActiveProtocol() {
         for (UserMqttContext ctx : userContexts.values()) {
             if (ctx.connected && ctx.client.getState().isConnected()) {

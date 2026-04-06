@@ -1,10 +1,12 @@
 package com.cde.service.impl;
 
+import com.cde.exception.BusinessException;
 import com.cde.mqtt.MqttClientService;
 import com.cde.service.AuditService;
 import com.cde.service.SubscribeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -66,19 +68,14 @@ public class SubscribeServiceImpl implements SubscribeService {
 
             auditService.log(username, "subscribe", "订阅主题: " + topic + ", QoS=" + qos, "backend");
             return emitter;
+        } catch (BusinessException e) {
+            log.error("MQTT订阅失败，user={}, topic={}: {}", username, topic, e.getMessage());
+            cleanupFailedSubscription(username, topic);
+            throw e;
         } catch (Exception e) {
-            log.error("MQTT订阅失败, user={}, topic={}: {}", username, topic, e.getMessage());
-
-            CopyOnWriteArrayList<String> topics = userTopics.get(username);
-            if (topics != null) {
-                topics.remove(topic);
-                if (topics.isEmpty()) {
-                    userTopics.remove(username);
-                    mqttClientService.disconnectForUser(username);
-                }
-            }
-
-            throw new RuntimeException("订阅失败: " + e.getMessage(), e);
+            log.error("MQTT订阅失败，user={}, topic={}: {}", username, topic, e.getMessage());
+            cleanupFailedSubscription(username, topic);
+            throw new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "订阅失败");
         }
     }
 
@@ -115,6 +112,19 @@ public class SubscribeServiceImpl implements SubscribeService {
         } catch (IOException e) {
             log.warn("SSE推送失败，清理连接: username={}", username);
             cleanupUserSession(username);
+        }
+    }
+
+    private void cleanupFailedSubscription(String username, String topic) {
+        CopyOnWriteArrayList<String> topics = userTopics.get(username);
+        if (topics != null) {
+            topics.remove(topic);
+            if (topics.isEmpty()) {
+                userTopics.remove(username);
+                mqttClientService.disconnectForUser(username);
+            }
+        } else {
+            mqttClientService.disconnectForUser(username);
         }
     }
 

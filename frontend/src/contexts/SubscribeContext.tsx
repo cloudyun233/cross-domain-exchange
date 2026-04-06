@@ -63,6 +63,12 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   };
 
+  const resetListeningState = () => {
+    activeTopicRef.current = null;
+    setActiveTopic(null);
+    setListening(false);
+  };
+
   const pushMessage = (rawPayload: string, messageTopic: string, timestamp?: number) => {
     let payloadText = rawPayload;
     let meta: ReceivedMessage['meta'];
@@ -74,7 +80,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
         payloadText = JSON.stringify(parsed.data, null, 2);
       }
     } catch {
-      // Ignore non-JSON payloads.
+      // Plain text payloads are displayed as-is.
     }
 
     setMessages((prev) => [{
@@ -83,6 +89,14 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
       timestamp: timestamp || Date.now(),
       meta,
     }, ...prev].slice(0, 100));
+  };
+
+  const handleTerminalError = (errorMessage: string) => {
+    shouldReconnectRef.current = false;
+    clearReconnectTimer();
+    closeStream();
+    resetListeningState();
+    message.error(errorMessage);
   };
 
   const createStream = (nextTopic: string, nextQos: number) => {
@@ -115,6 +129,10 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
 
       try {
         const errorData = JSON.parse(event.data);
+        if (errorData?.reconnectable === false) {
+          handleTerminalError(errorData.message || '订阅失败');
+          return;
+        }
         if (errorData?.message) {
           message.error(errorData.message);
         }
@@ -167,9 +185,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     closeStream();
 
     const currentTopic = activeTopicRef.current;
-    activeTopicRef.current = null;
-    setActiveTopic(null);
-    setListening(false);
+    resetListeningState();
 
     if (cancelRemote && currentTopic) {
       try {
