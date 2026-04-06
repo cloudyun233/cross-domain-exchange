@@ -5,22 +5,19 @@ import com.cde.dto.LoginResponse;
 import com.cde.entity.SysUser;
 
 /**
- * 鉴权服务接口 (论文4.5.3类图: AuthService)
+ * 认证服务接口
  */
 public interface AuthService {
 
-    /** JWT令牌签发 */
+    /** JWT 令牌签发 */
     LoginResponse login(LoginRequest request);
 
     /** 令牌刷新 */
     LoginResponse refreshToken(String token);
 
-    /**
-     * ACL权限校验 (已禁用)
-     * ACL校验由EMQX全权负责，后端不重复验证
-     */
-    // boolean checkACL(String clientId, String topic, String action);
-
-    /** 获取当前用户信息 */
+    /** 获取当前用户实体 */
     SysUser getUserByUsername(String username);
+
+    /** 获取当前用户展示信息 */
+    LoginResponse getCurrentUserProfile(String username, String token);
 }

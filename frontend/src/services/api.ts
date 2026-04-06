@@ -29,7 +29,7 @@ async function parseResponseBody<T>(resp: Response): Promise<T> {
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = sessionStorage.getItem('token');
   const headers: Record<string, string> = {};
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   let url = `${API_BASE}${path}`;
   if (options.params) {
@@ -75,12 +75,11 @@ export const api = {
 
   login: (data: { username: string; password: string }) =>
     request<any>('/auth/login', { method: 'POST', body: data }),
-  refreshToken: () =>
-    request<any>('/auth/refresh', { method: 'POST' }),
-  getCurrentUser: () =>
-    request<any>('/auth/me'),
+  refreshToken: () => request<any>('/auth/refresh', { method: 'POST' }),
+  getCurrentUser: () => request<any>('/auth/me'),
 
   getDomains: () => request<any>('/domains'),
+  getDomainTree: () => request<any>('/domains/tree'),
   createDomain: (data: any) => request<any>('/domains', { method: 'POST', body: data }),
   updateDomain: (id: number, data: any) => request<any>(`/domains/${id}`, { method: 'PUT', body: data }),
   deleteDomain: (id: number) => request<any>(`/domains/${id}`, { method: 'DELETE' }),
@@ -97,13 +96,12 @@ export const api = {
   syncAcl: () => request<any>('/acl-rules/sync', { method: 'POST' }),
 
   getTopicTree: () => request<any>('/topics/tree'),
-  publish: (topic: string, payload: string, qos: number, format: string = 'structured') => {
-    return request<any>('/topics/publish', {
+  publish: (topic: string, payload: string, qos: number, format: string = 'structured') =>
+    request<any>('/topics/publish', {
       method: 'POST',
       body: payload,
       params: { topic, qos: String(qos), format },
-    });
-  },
+    }),
 
   getMetrics: () => request<any>('/monitor/metrics'),
   getMessageStats: () => request<any>('/monitor/message-stats'),
@@ -128,9 +126,9 @@ export const api = {
       },
     });
   },
-  cancelSubscribe: (topic: string) => {
-    return request<any>('/subscribe/cancel', { method: 'POST', params: { topic } });
-  },
+
+  cancelSubscribe: (topic: string) =>
+    request<any>('/subscribe/cancel', { method: 'POST', params: { topic } }),
 
   getNetworkPresets: () => request<any>('/network/presets'),
   simulateNetwork: (delay: number, loss: number, bandwidth: number) =>

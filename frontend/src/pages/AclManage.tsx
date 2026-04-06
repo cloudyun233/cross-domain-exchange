@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table, Button, Modal, Form, Input, Select, Typography, message, Space, Tag, Popconfirm, Alert } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SyncOutlined, SafetyOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { DeleteOutlined, EditOutlined, PlusOutlined, SafetyOutlined, SyncOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
 
 const { Title } = Typography;
@@ -18,24 +18,28 @@ const AclManage: React.FC = () => {
     try {
       const res = await api.getAclRules();
       if (res.success) setRules(res.data);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { fetchRules(); }, []);
+  useEffect(() => {
+    void fetchRules();
+  }, []);
 
   const handleSave = async (values: any) => {
     try {
       if (editingId) {
         await api.updateAclRule(editingId, values);
-        message.success('ACL规则更新成功（已同步到Broker）');
+        message.success('ACL 规则更新成功，已同步到 Broker');
       } else {
         await api.createAclRule(values);
-        message.success('ACL规则创建成功（已同步到Broker）');
+        message.success('ACL 规则创建成功，已同步到 Broker');
       }
       setModalVisible(false);
       form.resetFields();
       setEditingId(null);
-      fetchRules();
+      void fetchRules();
     } catch (e: any) {
       message.error(e.message);
     }
@@ -43,45 +47,69 @@ const AclManage: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     await api.deleteAclRule(id);
-    message.success('ACL规则删除成功（已同步到Broker）');
-    fetchRules();
+    message.success('ACL 规则删除成功，已同步到 Broker');
+    void fetchRules();
   };
 
   const handleSync = async () => {
     setSyncing(true);
     try {
       const res = await api.syncAcl();
-      if (res.success) message.success('ACL规则全量同步到Broker成功');
-      else message.error(res.message);
-    } finally { setSyncing(false); }
+      if (res.success) {
+        message.success('ACL 规则已全量同步到 Broker');
+      } else {
+        message.error(res.message);
+      }
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60 },
-    { title: '用户名', dataIndex: 'username', render: (v: string) =>
-      v === '*' ? <Tag color="volcano">* (全局)</Tag> : <Tag>{v}</Tag>
-    },
-    { title: '主题过滤器', dataIndex: 'topicFilter', render: (v: string) =>
-      <Tag color="blue" style={{ fontFamily: 'monospace' }}>{v}</Tag>
-    },
-    { title: '动作', dataIndex: 'action', render: (v: string) => {
-      const colors: Record<string, string> = { publish: 'green', subscribe: 'cyan', all: 'purple' };
-      return <Tag color={colors[v] || 'default'}>{v}</Tag>;
-    }},
-    { title: '权限', dataIndex: 'accessType', render: (v: string) =>
-      <Tag color={v === 'allow' ? 'green' : 'red'}>{v === 'allow' ? '允许' : '拒绝'}</Tag>
+    {
+      title: '用户名',
+      dataIndex: 'username',
+      render: (v: string) => v === '*' ? <Tag color="volcano">* (全局)</Tag> : <Tag>{v}</Tag>,
     },
     {
-      title: '操作', width: 160,
+      title: '主题过滤器',
+      dataIndex: 'topicFilter',
+      render: (v: string) => <Tag color="blue" style={{ fontFamily: 'monospace' }}>{v}</Tag>,
+    },
+    {
+      title: '动作',
+      dataIndex: 'action',
+      render: (v: string) => {
+        const colors: Record<string, string> = { publish: 'green', subscribe: 'cyan', all: 'purple' };
+        return <Tag color={colors[v] || 'default'}>{v}</Tag>;
+      },
+    },
+    {
+      title: '权限',
+      dataIndex: 'accessType',
+      render: (v: string) => <Tag color={v === 'allow' ? 'green' : 'red'}>{v === 'allow' ? '允许' : '拒绝'}</Tag>,
+    },
+    {
+      title: '操作',
+      width: 160,
       render: (_: any, record: any) => (
         <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => {
-            setEditingId(record.id);
-            form.setFieldsValue(record);
-            setModalVisible(true);
-          }}>编辑</Button>
-          <Popconfirm title="确认删除?" onConfirm={() => handleDelete(record.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => {
+              setEditingId(record.id);
+              form.setFieldsValue(record);
+              setModalVisible(true);
+            }}
+          >
+            编辑
+          </Button>
+          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)}>
+            <Button size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
           </Popconfirm>
         </Space>
       ),
@@ -91,51 +119,82 @@ const AclManage: React.FC = () => {
   return (
     <div>
       <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
-        <Title level={4} style={{ margin: 0 }}><SafetyOutlined /> ACL规则管理</Title>
+        <Title level={4} style={{ margin: 0 }}>
+          <SafetyOutlined /> ACL 规则管理
+        </Title>
         <Space>
           <Button icon={<SyncOutlined spin={syncing} />} onClick={handleSync} loading={syncing}>
-            全量同步到Broker
+            全量同步到 Broker
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => {
-            setEditingId(null); form.resetFields(); setModalVisible(true);
-          }}>新增ACL规则</Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingId(null);
+              form.resetFields();
+              setModalVisible(true);
+            }}
+          >
+            新增 ACL 规则
+          </Button>
         </Space>
       </Space>
 
       <Alert
-        message="ACL规则说明"
-        description="每次创建/修改/删除规则后，系统会自动实时推送到EMQX Broker。全量同步 按钮用于容灾恢复场景。"
-        type="info" showIcon closable style={{ marginBottom: 16 }}
+        message="ACL 说明"
+        description="每次创建、修改、删除规则后，系统都会自动推送到 EMQX Broker。全量同步按钮用于恢复或手动对齐场景。"
+        type="info"
+        showIcon
+        closable
+        style={{ marginBottom: 16 }}
       />
 
       <Card>
         <Table dataSource={rules} columns={columns} rowKey="id" loading={loading} pagination={false} />
       </Card>
 
-      <Modal title={editingId ? '编辑ACL规则' : '新增ACL规则'} open={modalVisible}
-        onCancel={() => { setModalVisible(false); form.resetFields(); }}
-        onOk={() => form.submit()}>
+      <Modal
+        title={editingId ? '编辑 ACL 规则' : '新增 ACL 规则'}
+        open={modalVisible}
+        onCancel={() => {
+          setModalVisible(false);
+          form.resetFields();
+        }}
+        onOk={() => form.submit()}
+      >
         <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item name="username" label="用户名" rules={[{ required: true }]}
-            extra="输入*表示全局规则">
-            <Input placeholder="如: producer_swu 或 *" />
+          <Form.Item
+            name="username"
+            label="用户名"
+            rules={[{ required: true, message: '请输入用户名' }]}
+            extra="输入 * 表示全局规则"
+          >
+            <Input placeholder="如: producer_medical_swh 或 *" />
           </Form.Item>
-          <Form.Item name="topicFilter" label="主题过滤器" rules={[{ required: true }]}
-            extra="支持MQTT通配符: + (单层) # (多层)">
+          <Form.Item
+            name="topicFilter"
+            label="主题过滤器"
+            rules={[{ required: true, message: '请输入主题过滤器' }]}
+            extra="支持 MQTT 通配符：+（单层）和 #（多层）"
+          >
             <Input placeholder="如: /cross_domain/medical/#" />
           </Form.Item>
-          <Form.Item name="action" label="动作" rules={[{ required: true }]}>
-            <Select options={[
-              { value: 'publish', label: '发布 (publish)' },
-              { value: 'subscribe', label: '订阅 (subscribe)' },
-              { value: 'all', label: '全部 (all)' },
-            ]} />
+          <Form.Item name="action" label="动作" rules={[{ required: true, message: '请选择动作' }]}>
+            <Select
+              options={[
+                { value: 'publish', label: '发布 (publish)' },
+                { value: 'subscribe', label: '订阅 (subscribe)' },
+                { value: 'all', label: '全部 (all)' },
+              ]}
+            />
           </Form.Item>
-          <Form.Item name="accessType" label="权限" rules={[{ required: true }]}>
-            <Select options={[
-              { value: 'allow', label: '允许 (allow)' },
-              { value: 'deny', label: '拒绝 (deny)' },
-            ]} />
+          <Form.Item name="accessType" label="权限" rules={[{ required: true, message: '请选择权限' }]}>
+            <Select
+              options={[
+                { value: 'allow', label: '允许 (allow)' },
+                { value: 'deny', label: '拒绝 (deny)' },
+              ]}
+            />
           </Form.Item>
         </Form>
       </Modal>

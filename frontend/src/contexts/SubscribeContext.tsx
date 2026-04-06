@@ -35,7 +35,7 @@ interface SubscribeContextType {
 const SubscribeContext = createContext<SubscribeContextType | undefined>(undefined);
 
 export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [topic, setTopic] = useState('/cross_domain/medical/#');
+  const [topic, setTopic] = useState('');
   const [qos, setQos] = useState(1);
   const [listening, setListening] = useState(false);
   const [activeTopic, setActiveTopic] = useState<string | null>(null);
@@ -80,7 +80,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
         payloadText = JSON.stringify(parsed.data, null, 2);
       }
     } catch {
-      // Plain text payloads are displayed as-is.
+      // plain text payload
     }
 
     setMessages((prev) => [{
@@ -99,6 +99,36 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     message.error(errorMessage);
   };
 
+  const handleReconnect = async () => {
+    if (!shouldReconnectRef.current) {
+      return;
+    }
+
+    const attempts = reconnectAttemptsRef.current;
+    if (attempts >= MAX_RECONNECT_ATTEMPTS) {
+      shouldReconnectRef.current = false;
+      setListening(false);
+      message.error('SSE 重连失败，已达到最大次数，请手动重试');
+      return;
+    }
+
+    const retryTopic = activeTopicRef.current;
+    if (!retryTopic) {
+      shouldReconnectRef.current = false;
+      setListening(false);
+      return;
+    }
+
+    const delay = BASE_RECONNECT_DELAY * Math.pow(2, attempts);
+    message.warning(`SSE 连接中断，${Math.round(delay / 1000)} 秒后尝试重连`);
+
+    clearReconnectTimer();
+    reconnectTimeoutRef.current = setTimeout(() => {
+      reconnectAttemptsRef.current = attempts + 1;
+      createStream(retryTopic, activeQosRef.current);
+    }, delay);
+  };
+
   const createStream = (nextTopic: string, nextQos: number) => {
     closeStream();
 
@@ -107,7 +137,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     es.addEventListener('connected', ((event: any) => {
       if (event.data) {
-        message.success('SSE连接已建立，等待消息...');
+        message.success('订阅连接已建立，等待消息...');
       }
       reconnectAttemptsRef.current = 0;
       setListening(true);
@@ -137,7 +167,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
           message.error(errorData.message);
         }
       } catch {
-        // Ignore malformed error payloads.
+        // ignore malformed payload
       }
     }) as any);
 
@@ -146,37 +176,6 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
         void handleReconnect();
       }
     };
-  };
-
-  const handleReconnect = async () => {
-    if (!shouldReconnectRef.current) {
-      return;
-    }
-
-    const attempts = reconnectAttemptsRef.current;
-    if (attempts >= MAX_RECONNECT_ATTEMPTS) {
-      shouldReconnectRef.current = false;
-      setListening(false);
-      message.error('SSE连接失败，已达到最大重连次数，请手动重新连接');
-      return;
-    }
-
-    const retryTopic = activeTopicRef.current;
-    if (!retryTopic) {
-      shouldReconnectRef.current = false;
-      setListening(false);
-      return;
-    }
-
-    const delay = BASE_RECONNECT_DELAY * Math.pow(2, attempts);
-    message.warning(`SSE连接中断，${Math.round(delay / 1000)}秒后尝试重连...`);
-
-    clearReconnectTimer();
-    reconnectTimeoutRef.current = setTimeout(() => {
-      reconnectAttemptsRef.current = attempts + 1;
-      message.info(`尝试重连 (${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})...`);
-      createStream(retryTopic, activeQosRef.current);
-    }, delay);
   };
 
   const stopListening = async ({ silent = false, cancelRemote = true }: StopListeningOptions = {}) => {
@@ -203,7 +202,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
   const startListening = async () => {
     const nextTopic = topic.trim();
     if (!nextTopic) {
-      message.warning('请输入订阅主题');
+      message.warning('请选择或输入订阅主题');
       return;
     }
 
@@ -232,27 +231,27 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    return () => {
-      shouldReconnectRef.current = false;
-      clearReconnectTimer();
-      closeStream();
-    };
+  useEffect(() => () => {
+    shouldReconnectRef.current = false;
+    clearReconnectTimer();
+    closeStream();
   }, []);
 
   return (
-    <SubscribeContext.Provider value={{
-      topic,
-      qos,
-      listening,
-      activeTopic,
-      messages,
-      setTopic,
-      setQos,
-      startListening,
-      stopListening,
-      clearMessages,
-    }}>
+    <SubscribeContext.Provider
+      value={{
+        topic,
+        qos,
+        listening,
+        activeTopic,
+        messages,
+        setTopic,
+        setQos,
+        startListening,
+        stopListening,
+        clearMessages,
+      }}
+    >
       {children}
     </SubscribeContext.Provider>
   );

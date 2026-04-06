@@ -15,10 +15,12 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
 /**
- * 鉴权服务实现 (论文4.5.3: AuthServiceImpl)
- * 核心职责: JWT签发、用户信息管理
- * ACL校验由EMQX全权负责，后端不重复验证
+ * 认证服务实现
  */
 @Slf4j
 @Service
@@ -32,32 +34,15 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginResponse login(LoginRequest request) {
-        SysUser user = userMapper.selectOne(
-                new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, request.getUsername()));
-
-        if (user == null) {
-            throw new BadCredentialsException("用户不存在: " + request.getUsername());
-        }
+        SysUser user = getRequiredUser(request.getUsername());
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BadCredentialsException("密码错误");
         }
 
-        SysDomain domain = domainMapper.selectById(user.getDomainId());
-        String domainCode = domain != null ? domain.getDomainCode() : "unknown";
-        String domainName = domain != null ? domain.getDomainName() : "未知域";
-
+        String domainCode = buildDomainCode(user.getDomainId());
         String token = jwtUtil.generateToken(user.getUsername(), user.getClientId(), domainCode, user.getRoleType());
-
-        return LoginResponse.builder()
-                .token(token)
-                .expires(jwtUtil.getExpirationMs() / 1000)
-                .username(user.getUsername())
-                .roleType(user.getRoleType())
-                .domainCode(domainCode)
-                .domainName(domainName)
-                .clientId(user.getClientId())
-                .build();
+        return buildLoginResponse(user, token);
     }
 
     @Override
@@ -65,28 +50,85 @@ public class AuthServiceImpl implements AuthService {
         if (!jwtUtil.validateToken(oldToken)) {
             throw new BadCredentialsException("令牌无效或已过期");
         }
+
         String username = jwtUtil.getUsernameFromToken(oldToken);
-        String domainCode = jwtUtil.getDomainCodeFromToken(oldToken);
-        String roleType = jwtUtil.getRoleTypeFromToken(oldToken);
-
-        SysUser user = userMapper.selectOne(
-                new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
-
-        String clientId = user != null ? user.getClientId() : jwtUtil.getClientIdFromToken(oldToken);
-        String newToken = jwtUtil.generateToken(username, clientId, domainCode, roleType);
-        return LoginResponse.builder()
-                .token(newToken)
-                .expires(jwtUtil.getExpirationMs() / 1000)
-                .username(username)
-                .roleType(roleType)
-                .domainCode(domainCode)
-                .clientId(clientId)
-                .build();
+        SysUser user = getRequiredUser(username);
+        String domainCode = buildDomainCode(user.getDomainId());
+        String newToken = jwtUtil.generateToken(user.getUsername(), user.getClientId(), domainCode, user.getRoleType());
+        return buildLoginResponse(user, newToken);
     }
 
     @Override
     public SysUser getUserByUsername(String username) {
-        return userMapper.selectOne(
-                new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
+        return userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
+    }
+
+    @Override
+    public LoginResponse getCurrentUserProfile(String username, String token) {
+        SysUser user = getRequiredUser(username);
+        return buildLoginResponse(user, token);
+    }
+
+    private SysUser getRequiredUser(String username) {
+        SysUser user = getUserByUsername(username);
+        if (user == null) {
+            throw new BadCredentialsException("用户不存在: " + username);
+        }
+        return user;
+    }
+
+    private LoginResponse buildLoginResponse(SysUser user, String token) {
+        return LoginResponse.builder()
+                .token(token)
+                .expires(jwtUtil.getExpirationMs() / 1000)
+                .username(user.getUsername())
+                .roleType(user.getRoleType())
+                .roleName(resolveRoleName(user.getRoleType()))
+                .domainCode(buildDomainCode(user.getDomainId()))
+                .domainName(buildDomainName(user.getDomainId()))
+                .clientId(user.getClientId())
+                .build();
+    }
+
+    private String resolveRoleName(String roleType) {
+        if (roleType == null) {
+            return "未知角色";
+        }
+        return switch (roleType.toLowerCase(Locale.ROOT)) {
+            case "admin" -> "管理员";
+            case "producer" -> "生产者";
+            case "consumer" -> "消费者";
+            default -> roleType;
+        };
+    }
+
+    private String buildDomainCode(Long domainId) {
+        if (domainId == null) {
+            return "all";
+        }
+        return String.join("/", loadDomainSegments(domainId, true));
+    }
+
+    private String buildDomainName(Long domainId) {
+        if (domainId == null) {
+            return "全域";
+        }
+        return String.join(" / ", loadDomainSegments(domainId, false));
+    }
+
+    private List<String> loadDomainSegments(Long domainId, boolean useCode) {
+        List<String> segments = new ArrayList<>();
+        Long currentId = domainId;
+
+        while (currentId != null) {
+            SysDomain domain = domainMapper.selectById(currentId);
+            if (domain == null) {
+                break;
+            }
+            segments.add(0, useCode ? domain.getDomainCode() : domain.getDomainName());
+            currentId = domain.getParentId();
+        }
+
+        return segments;
     }
 }

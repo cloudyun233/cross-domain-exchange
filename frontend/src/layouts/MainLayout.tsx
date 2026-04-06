@@ -22,7 +22,7 @@ const { Text } = Typography;
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const { user, clientId, logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const isAdmin = user?.roleType?.toUpperCase() === 'ADMIN';
@@ -37,8 +37,8 @@ const MainLayout: React.FC = () => {
     ...commonMenuItems,
     { type: 'divider' as const },
     { key: '/domains', icon: <ApartmentOutlined />, label: '安全域管理' },
-    { key: '/clients', icon: <UserOutlined />, label: '客户端管理' },
-    { key: '/acl', icon: <SafetyOutlined />, label: 'ACL规则管理' },
+    { key: '/clients', icon: <UserOutlined />, label: '用户管理' },
+    { key: '/acl', icon: <SafetyOutlined />, label: 'ACL 规则管理' },
     { type: 'divider' as const },
     { key: '/audit', icon: <FileTextOutlined />, label: '审计日志' },
     { key: '/network', icon: <WifiOutlined />, label: '弱网模拟' },
@@ -50,12 +50,6 @@ const MainLayout: React.FC = () => {
     admin: 'red',
     producer: 'blue',
     consumer: 'green',
-  };
-
-  const roleLabels: Record<string, string> = {
-    admin: '管理员',
-    producer: '生产者',
-    consumer: '消费者',
   };
 
   const normalizedRole = user?.roleType?.toLowerCase() || '';
@@ -80,18 +74,20 @@ const MainLayout: React.FC = () => {
         collapsed={collapsed}
         theme="dark"
         style={{
-          background: 'linear-gradient(180deg, #001529 0%, #002140 100%)',
+          background: 'linear-gradient(180deg, #0f2742 0%, #143a5c 100%)',
           boxShadow: '2px 0 8px rgba(0,0,0,0.15)',
         }}
       >
-        <div style={{
-          height: 64,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-        }}>
-          <SettingOutlined style={{ fontSize: 24, color: '#1890ff' }} />
+        <div
+          style={{
+            height: 64,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+          }}
+        >
+          <SettingOutlined style={{ fontSize: 24, color: '#7dd3fc' }} />
           {!collapsed && (
             <Text strong style={{ color: '#fff', marginLeft: 10, fontSize: 14, whiteSpace: 'nowrap' }}>
               跨域数据交换系统
@@ -109,41 +105,43 @@ const MainLayout: React.FC = () => {
       </Sider>
 
       <Layout>
-        <Header style={{
-          padding: '0 24px',
-          background: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-          zIndex: 1,
-        }}>
+        <Header
+          style={{
+            padding: '0 24px',
+            background: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+            zIndex: 1,
+          }}
+        >
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
           />
           <Space size="middle">
-            <Tag color={roleColors[normalizedRole] || 'default'}>
-              {roleLabels[normalizedRole] || user?.roleType}
-            </Tag>
-            <Text type="secondary">域: {user?.domainName || user?.domainCode}</Text>
+            <Tag color={roleColors[normalizedRole] || 'default'}>{user?.roleName || user?.roleType}</Tag>
+            <Text type="secondary">所属域: {user?.domainName || '全域'}</Text>
             <Dropdown menu={{ items: dropdownItems }} placement="bottomRight">
               <Space style={{ cursor: 'pointer' }}>
-                <Avatar size="small" icon={<UserOutlined />} style={{ background: '#1890ff' }} />
-                <Text strong>{clientId}</Text>
+                <Avatar size="small" icon={<UserOutlined />} style={{ background: '#1677ff' }} />
+                <Text strong>{user?.username}</Text>
               </Space>
             </Dropdown>
           </Space>
         </Header>
 
-        <Content style={{
-          margin: 16,
-          padding: 20,
-          background: '#f0f2f5',
-          minHeight: 280,
-          borderRadius: 8,
-        }}>
+        <Content
+          style={{
+            margin: 16,
+            padding: 20,
+            background: '#f0f2f5',
+            minHeight: 280,
+            borderRadius: 8,
+          }}
+        >
           <Outlet />
         </Content>
       </Layout>

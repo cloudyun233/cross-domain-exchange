@@ -1,8 +1,8 @@
 package com.cde.dto;
 
-import lombok.Data;
-import lombok.Builder;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
@@ -14,6 +14,7 @@ public class LoginResponse {
     private long expires;
     private String username;
     private String roleType;
+    private String roleName;
     private String domainCode;
     private String domainName;
     private String clientId;

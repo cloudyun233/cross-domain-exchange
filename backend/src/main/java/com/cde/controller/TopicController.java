@@ -1,6 +1,7 @@
 package com.cde.controller;
 
 import com.cde.dto.ApiResponse;
+import com.cde.dto.DomainTreeNode;
 import com.cde.exception.BusinessException;
 import com.cde.service.TopicService;
 import com.cde.service.converter.DataConverter;
@@ -10,13 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Locale;
@@ -33,7 +28,7 @@ public class TopicController {
     private final ObjectMapper objectMapper;
 
     @GetMapping("/tree")
-    public ApiResponse<List<Map<String, Object>>> getTopicTree() {
+    public ApiResponse<List<DomainTreeNode>> getTopicTree() {
         return ApiResponse.ok(topicService.buildDomainTopicTree());
     }
 
@@ -44,8 +39,8 @@ public class TopicController {
             @RequestParam(defaultValue = "1") int qos,
             @RequestParam(defaultValue = "structured") String format,
             @RequestHeader("Authorization") String authHeader,
-            Authentication auth) {
-
+            Authentication auth
+    ) {
         String username = auth.getName();
         String token = authHeader.replace("Bearer ", "");
         String actualFormat = resolveActualFormat(format, payload);

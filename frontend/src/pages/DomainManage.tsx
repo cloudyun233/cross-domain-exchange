@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table, Button, Modal, Form, Input, Select, Typography, message, Space, Tag, Popconfirm } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const DomainManage: React.FC = () => {
   const [domains, setDomains] = useState<any[]>([]);
@@ -12,15 +12,33 @@ const DomainManage: React.FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form] = Form.useForm();
 
+  const getDomainLabel = (domainId?: number | null): string => {
+    if (!domainId) return '-';
+    const lookup = new Map(domains.map((item) => [item.id, item]));
+    const names: string[] = [];
+    let current = lookup.get(domainId);
+
+    while (current) {
+      names.unshift(current.domainName);
+      current = current.parentId ? lookup.get(current.parentId) : undefined;
+    }
+
+    return names.join(' / ');
+  };
+
   const fetchDomains = async () => {
     setLoading(true);
     try {
       const res = await api.getDomains();
       if (res.success) setDomains(res.data);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { fetchDomains(); }, []);
+  useEffect(() => {
+    void fetchDomains();
+  }, []);
 
   const handleSave = async (values: any) => {
     try {
@@ -34,7 +52,7 @@ const DomainManage: React.FC = () => {
       setModalVisible(false);
       form.resetFields();
       setEditingId(null);
-      fetchDomains();
+      void fetchDomains();
     } catch (e: any) {
       message.error(e.message);
     }
@@ -43,25 +61,43 @@ const DomainManage: React.FC = () => {
   const handleDelete = async (id: number) => {
     await api.deleteDomain(id);
     message.success('安全域删除成功');
-    fetchDomains();
+    void fetchDomains();
   };
 
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60 },
     { title: '域编码', dataIndex: 'domainCode', render: (v: string) => <Tag color="blue">{v}</Tag> },
     { title: '域名称', dataIndex: 'domainName' },
-    { title: '状态', dataIndex: 'status', render: (v: number) => v === 1 ? <Tag color="green">启用</Tag> : <Tag color="red">禁用</Tag> },
     {
-      title: '操作', width: 160,
+      title: '父域',
+      dataIndex: 'parentId',
+      render: (value: number | null) => value ? <Tag color="cyan">{getDomainLabel(value)}</Tag> : <Text type="secondary">顶级域</Text>,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      render: (v: number) => v === 1 ? <Tag color="green">启用</Tag> : <Tag color="red">禁用</Tag>,
+    },
+    {
+      title: '操作',
+      width: 160,
       render: (_: any, record: any) => (
         <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => {
-            setEditingId(record.id);
-            form.setFieldsValue(record);
-            setModalVisible(true);
-          }}>编辑</Button>
-          <Popconfirm title="确认删除?" onConfirm={() => handleDelete(record.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => {
+              setEditingId(record.id);
+              form.setFieldsValue(record);
+              setModalVisible(true);
+            }}
+          >
+            编辑
+          </Button>
+          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)}>
+            <Button size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
           </Popconfirm>
         </Space>
       ),
@@ -72,26 +108,53 @@ const DomainManage: React.FC = () => {
     <div>
       <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
         <Title level={4} style={{ margin: 0 }}>安全域管理</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => {
-          setEditingId(null); form.resetFields(); setModalVisible(true);
-        }}>新增安全域</Button>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => {
+            setEditingId(null);
+            form.resetFields();
+            setModalVisible(true);
+          }}
+        >
+          新增安全域
+        </Button>
       </Space>
+
+      <Card style={{ marginBottom: 16 }}>
+        <Text type="secondary">域编码用于 topic 路径，建议使用英文或拼音；域名称可以使用中文。</Text>
+      </Card>
 
       <Card>
         <Table dataSource={domains} columns={columns} rowKey="id" loading={loading} pagination={false} />
       </Card>
 
-      <Modal title={editingId ? '编辑安全域' : '新增安全域'} open={modalVisible}
-        onCancel={() => { setModalVisible(false); form.resetFields(); }}
-        onOk={() => form.submit()}>
-        <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item name="domainCode" label="域编码" rules={[{ required: true }]}>
-            <Input placeholder="如: gov, medical, enterprise" />
+      <Modal
+        title={editingId ? '编辑安全域' : '新增安全域'}
+        open={modalVisible}
+        onCancel={() => {
+          setModalVisible(false);
+          form.resetFields();
+        }}
+        onOk={() => form.submit()}
+      >
+        <Form form={form} layout="vertical" onFinish={handleSave} initialValues={{ status: 1 }}>
+          <Form.Item name="parentId" label="父域">
+            <Select
+              allowClear
+              placeholder="不选表示顶级域"
+              options={domains
+                .filter((domain) => domain.id !== editingId)
+                .map((domain) => ({ value: domain.id, label: getDomainLabel(domain.id) }))}
+            />
           </Form.Item>
-          <Form.Item name="domainName" label="域名称" rules={[{ required: true }]}>
-            <Input placeholder="如: 政务域" />
+          <Form.Item name="domainCode" label="域编码" rules={[{ required: true, message: '请输入域编码' }]}>
+            <Input placeholder="如：medical、swh、gov" />
           </Form.Item>
-          <Form.Item name="status" label="状态" initialValue={1}>
+          <Form.Item name="domainName" label="域名称" rules={[{ required: true, message: '请输入域名称' }]}>
+            <Input placeholder="如：医疗域、西南医院" />
+          </Form.Item>
+          <Form.Item name="status" label="状态">
             <Select options={[{ value: 1, label: '启用' }, { value: 0, label: '禁用' }]} />
           </Form.Item>
         </Form>

@@ -1,10 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Card, Col, Radio, Row, Space, Tag, Tree, Typography, message, Input } from 'antd';
+import { Alert, Button, Card, Col, Input, Radio, Row, Space, Tag, Tree, Typography, message } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
 
 const { TextArea } = Input;
 const { Title, Text } = Typography;
+
+interface DomainTreeNode {
+  key: string;
+  title: string;
+  domainCode?: string;
+  pathName?: string;
+  topicPath?: string;
+  subscribeTopic?: string;
+  isLeaf?: boolean;
+  children?: DomainTreeNode[];
+}
 
 const STRUCTURED_SAMPLE = `{
   "patientId": "P20260401001",
@@ -13,15 +24,16 @@ const STRUCTURED_SAMPLE = `{
   "timestamp": "2026-04-01T08:00:00"
 }`;
 
-const PLAIN_TEXT_SAMPLE = '普通文本消息：供应链订单已完成签收';
+const PLAIN_TEXT_SAMPLE = '普通文本消息：西南医院已完成病历脱敏';
 
 const formatLabels: Record<string, string> = {
-  structured: 'JSON（XML兼容）',
-  text: '普通消息',
+  structured: '结构化',
+  text: '文本',
 };
 
 const Publish: React.FC = () => {
-  const [topicTree, setTopicTree] = useState<any[]>([]);
+  const [topicTree, setTopicTree] = useState<DomainTreeNode[]>([]);
+  const [selectedNode, setSelectedNode] = useState<DomainTreeNode | null>(null);
   const [selectedTopic, setSelectedTopic] = useState('');
   const [payload, setPayload] = useState(STRUCTURED_SAMPLE);
   const [qos, setQos] = useState(1);
@@ -30,7 +42,7 @@ const Publish: React.FC = () => {
   const [history, setHistory] = useState<any[]>([]);
 
   useEffect(() => {
-    api.getTopicTree().then((resp) => {
+    api.getDomainTree().then((resp) => {
       if (resp.success) {
         setTopicTree(resp.data);
       }
@@ -44,7 +56,7 @@ const Publish: React.FC = () => {
 
   const handlePublish = async () => {
     if (!selectedTopic) {
-      message.warning('请选择目标主题');
+      message.warning('请先选择目标域');
       return;
     }
     if (!payload.trim()) {
@@ -81,65 +93,86 @@ const Publish: React.FC = () => {
 
   return (
     <div>
-      <Title level={4}>数据发布（生产者视角）</Title>
+      <Title level={4}>数据发布</Title>
       <Row gutter={16}>
-        <Col xs={24} lg={10}>
-          <Card title="选择目标主题" size="small" style={{ marginBottom: 16 }}>
+        <Col xs={24} lg={9}>
+          <Card
+            title="选择域"
+            size="small"
+            style={{ marginBottom: 16 }}
+            extra={<Tag color="blue">后端域表驱动</Tag>}
+          >
             <Tree
-              treeData={topicTree}
-              onSelect={(keys) => {
-                if (keys.length > 0) {
-                  setSelectedTopic(keys[0] as string);
-                }
-              }}
-              selectedKeys={selectedTopic ? [selectedTopic] : []}
+              showLine
+              blockNode
               defaultExpandAll
-              style={{ maxHeight: 300, overflow: 'auto' }}
+              treeData={topicTree as any}
+              selectedKeys={selectedTopic ? [selectedTopic] : []}
+              onSelect={(_, info) => {
+                const node = info.node as any;
+                const topicPath = node.topicPath || node.key;
+                setSelectedNode(node);
+                setSelectedTopic(topicPath);
+              }}
+              titleRender={(nodeData: any) => (
+                <Space size="small">
+                  <span>{nodeData.title}</span>
+                  {nodeData.domainCode && <Tag color={nodeData.isLeaf ? 'green' : 'cyan'}>{nodeData.domainCode}</Tag>}
+                </Space>
+              )}
+              style={{ maxHeight: 420, overflow: 'auto' }}
             />
-            {selectedTopic && (
-              <Tag color="blue" style={{ marginTop: 8 }}>已选: {selectedTopic}</Tag>
-            )}
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginTop: 12 }}
+              message={selectedNode?.pathName || '请选择一个域节点'}
+              description={selectedTopic || '发布主题会使用所选域对应的 topicPath'}
+            />
           </Card>
         </Col>
 
-        <Col xs={24} lg={14}>
+        <Col xs={24} lg={15}>
           <Card title="消息配置" size="small" style={{ marginBottom: 16 }}>
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
               <div>
-                <Text strong>QoS等级：</Text>
+                <Text strong>发布主题：</Text>
+                <Tag color="processing" style={{ marginLeft: 8 }}>
+                  {selectedTopic || '未选择'}
+                </Tag>
+              </div>
+
+              <div>
+                <Text strong>QoS：</Text>
                 <Radio.Group value={qos} onChange={(e) => setQos(e.target.value)} style={{ marginLeft: 8 }}>
-                  <Radio.Button value={0}>QoS 0（最多一次）</Radio.Button>
-                  <Radio.Button value={1}>QoS 1（至少一次）</Radio.Button>
-                  <Radio.Button value={2}>QoS 2（精确一次）</Radio.Button>
+                  <Radio.Button value={0}>QoS 0</Radio.Button>
+                  <Radio.Button value={1}>QoS 1</Radio.Button>
+                  <Radio.Button value={2}>QoS 2</Radio.Button>
                 </Radio.Group>
               </div>
+
               <div>
-                <Text strong>数据格式：</Text>
-                <Radio.Group
-                  value={format}
-                  onChange={(e) => handleFormatChange(e.target.value)}
-                  style={{ marginLeft: 8 }}
-                >
-                  <Radio.Button value="structured">JSON（XML兼容）</Radio.Button>
-                  <Radio.Button value="text">普通消息</Radio.Button>
+                <Text strong>消息格式：</Text>
+                <Radio.Group value={format} onChange={(e) => handleFormatChange(e.target.value)} style={{ marginLeft: 8 }}>
+                  <Radio.Button value="structured">结构化</Radio.Button>
+                  <Radio.Button value="text">文本</Radio.Button>
                 </Radio.Group>
               </div>
+
+              <Text type="secondary">
+                结构化模式默认按 JSON 处理；若内容以 {'<'} 开头，则后端按 XML 转 JSON。
+              </Text>
+
               <div>
-                <Text type="secondary">
-                  {format === 'structured'
-                    ? '可直接输入 JSON；若内容以 < 开头则按 XML 解析并自动转为 JSON。'
-                    : '普通消息将按原始文本直接发送。'}
-                </Text>
-              </div>
-              <div>
-                <Text strong>消息体：</Text>
+                <Text strong>消息内容：</Text>
                 <TextArea
                   value={payload}
                   onChange={(e) => setPayload(e.target.value)}
-                  rows={8}
-                  style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 13 }}
+                  rows={10}
+                  style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 13 }}
                 />
               </div>
+
               <Button
                 type="primary"
                 icon={<SendOutlined />}

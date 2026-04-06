@@ -17,7 +17,7 @@ const Login: React.FC = () => {
       await login(values.username, values.password);
       const savedUser = sessionStorage.getItem('user');
       const roleType = savedUser ? JSON.parse(savedUser).roleType : '';
-      message.success('登录成功，登录状态仅在当前标签页有效');
+      message.success('登录成功，登录态仅在当前标签页有效');
       navigate(roleType?.toUpperCase() === 'ADMIN' ? '/dashboard' : '/publish');
     } catch (err: any) {
       message.error(err.message || '登录失败');
@@ -37,17 +37,12 @@ const Login: React.FC = () => {
         styles={{ body: { padding: 40 } }}
       >
         <Space direction="vertical" size="large" style={{ width: '100%', textAlign: 'center' }}>
-          <SafetyOutlined style={{ fontSize: 48, color: '#1890ff' }} />
+          <SafetyOutlined style={{ fontSize: 48, color: '#1677ff' }} />
           <Title level={3} style={{ margin: 0 }}>跨域数据交换系统</Title>
           <Text type="secondary">基于发布订阅机制的安全数据交换平台</Text>
         </Space>
 
-        <Form
-          name="login"
-          onFinish={onFinish}
-          size="large"
-          style={{ marginTop: 32 }}
-        >
+        <Form name="login" onFinish={onFinish} size="large" style={{ marginTop: 32 }}>
           <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input prefix={<UserOutlined />} placeholder="用户名 / ClientID" autoComplete="username" />
           </Form.Item>
@@ -64,10 +59,10 @@ const Login: React.FC = () => {
         <Card size="small" style={{ background: '#f6f8fa', marginTop: 8 }}>
           <Text strong>演示账号：</Text>
           <Paragraph style={{ margin: '4px 0 0', fontSize: 12 }} type="secondary">
-            管理员: admin / admin123<br />
-            生产者(医疗域): producer_swu / 123456<br />
-            消费者(政务域): consumer_social / 123456<br />
-            消费者(企业域): consumer_c / 123456
+            管理员：admin / admin123<br />
+            生产者（医疗域 / 西南医院）：producer_medical_swh / 123456<br />
+            消费者（政务域）：consumer_social / 123456<br />
+            消费者（医疗域 / 西南医院）：consumer_medical_swh / 123456
           </Paragraph>
         </Card>
       </Card>
