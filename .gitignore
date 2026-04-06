@@ -116,3 +116,4 @@ commit-message.txt
 # Local Maven repository cache
 .java-home/
 .mvn/
+openapi.json

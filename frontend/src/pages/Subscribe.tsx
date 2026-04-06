@@ -21,6 +21,7 @@ const Subscribe: React.FC = () => {
   const esRef = useRef<EventSourcePolyfill | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef<number>(0);
+  const shouldReconnectRef = useRef<boolean>(false);
   const maxReconnectAttempts = 5;
   const baseReconnectDelay = 1000; // 1秒
 
@@ -75,16 +76,17 @@ const Subscribe: React.FC = () => {
     });
 
     es.onerror = () => {
-      if (listening) {
+      if (shouldReconnectRef.current) {
         handleReconnect();
       }
     };
 
+    shouldReconnectRef.current = true;
     setListening(true);
   };
 
   const handleReconnect = () => {
-    if (!listening) return;
+    if (!shouldReconnectRef.current) return;
 
     const attempts = reconnectAttemptsRef.current;
     if (attempts >= maxReconnectAttempts) {
@@ -116,6 +118,7 @@ const Subscribe: React.FC = () => {
   };
 
   const stopListening = () => {
+    shouldReconnectRef.current = false;
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;

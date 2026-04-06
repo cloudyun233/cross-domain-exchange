@@ -1,7 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Typography, Space, Button, Slider, Tag, Row, Col, Alert, Descriptions, message } from 'antd';
-import { ThunderboltOutlined, WifiOutlined } from '@ant-design/icons';
+import { Card, Typography, Button, Tag, Row, Col, Alert, message, Spin, Result } from 'antd';
+import {
+  ThunderboltOutlined,
+  WifiOutlined,
+  CloudOutlined,
+  AlertOutlined,
+  CloseCircleOutlined,
+  CheckCircleOutlined,
+} from '@ant-design/icons';
 import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const { Title, Text } = Typography;
 
@@ -10,35 +18,53 @@ interface Preset {
   delay: number;
   loss: number;
   bandwidth: number;
+  description: string;
 }
 
+const presetIcons: Record<string, React.ReactNode> = {
+  '无限制': <CheckCircleOutlined style={{ fontSize: 32, color: '#52c41a' }} />,
+  '标准网络': <WifiOutlined style={{ fontSize: 32, color: '#1890ff' }} />,
+  '政务跨域波动': <CloudOutlined style={{ fontSize: 32, color: '#722ed1' }} />,
+  '普通弱网': <AlertOutlined style={{ fontSize: 32, color: '#fa8c16' }} />,
+  '极端弱网': <CloseCircleOutlined style={{ fontSize: 32, color: '#f5222d' }} />,
+};
+
+const presetColors: Record<string, string> = {
+  '无限制': '#52c41a',
+  '标准网络': '#1890ff',
+  '政务跨域波动': '#722ed1',
+  '普通弱网': '#fa8c16',
+  '极端弱网': '#f5222d',
+};
+
 const NetworkSimulate: React.FC = () => {
+  const { user } = useAuth();
   const [presets, setPresets] = useState<Preset[]>([]);
-  const [activePreset, setActivePreset] = useState<string>('标准网络');
-  const [delay, setDelay] = useState(0);
-  const [loss, setLoss] = useState(0);
-  const [bandwidth, setBandwidth] = useState(0);
+  const [selectedPreset, setSelectedPreset] = useState<string>('无限制');
+  const [currentPreset, setCurrentPreset] = useState<string>('无限制');
   const [applying, setApplying] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.getNetworkPresets().then(res => {
-      if (res.success) setPresets(res.data);
-    });
+      if (res.success) {
+        setPresets(res.data);
+        setSelectedPreset('无限制');
+        setCurrentPreset('无限制');
+      }
+    }).finally(() => setLoading(false));
   }, []);
 
-  const applyPreset = (preset: Preset) => {
-    setDelay(preset.delay);
-    setLoss(preset.loss);
-    setBandwidth(preset.bandwidth);
-    setActivePreset(preset.name);
-  };
-
   const handleApply = async () => {
+    const preset = presets.find(p => p.name === selectedPreset);
+    if (!preset) return;
+
     setApplying(true);
     try {
-      const res = await api.simulateNetwork(delay, loss, bandwidth);
+      const res = await api.simulateNetwork(preset.delay, preset.loss, preset.bandwidth);
       if (res.success) {
         message.success(res.message || '弱网模拟已设置');
+        setCurrentPreset(selectedPreset);
       } else {
         message.error(res.message);
       }
@@ -49,80 +75,111 @@ const NetworkSimulate: React.FC = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+        <Spin size="large" tip="加载中..." />
+      </div>
+    );
+  }
+
+  if (user?.roleType !== 'ADMIN') {
+    return (
+      <Result
+        status="403"
+        title="无访问权限"
+        subTitle="弱网模拟功能仅限管理员使用"
+      />
+    );
+  }
+
   return (
     <div>
-      <Title level={4}><WifiOutlined /> 弱网模拟（Linux TC）</Title>
+      <Title level={4}><ThunderboltOutlined /> 弱网模拟（Linux TC）</Title>
 
       <Alert
         message="说明"
-        description="弱网模拟需要在Linux Docker环境中运行,通过Linux TC (traffic control) 模拟跨域网络延迟、丢包和带宽限制。本页面仅在Docker容器化部署时生效。"
-        type="info" showIcon style={{ marginBottom: 16 }}
+        description="弱网模拟需要在Linux Docker环境中运行，通过Linux TC (traffic control) 模拟跨域网络延迟、丢包和带宽限制。选择预设场景后点击应用生效。"
+        type="info"
+        showIcon
+        style={{ marginBottom: 24 }}
       />
 
-      <Row gutter={16}>
-        <Col xs={24} lg={8}>
-          <Card title="预设场景 (论文表4-4)" size="small">
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {presets.map(p => (
-                <Button
-                  key={p.name}
-                  block
-                  type={activePreset === p.name ? 'primary' : 'default'}
-                  onClick={() => applyPreset(p)}
-                  icon={<ThunderboltOutlined />}
-                >
-                  {p.name}
-                </Button>
-              ))}
-              {presets.length === 0 && (
-                <>
-                  <Button block onClick={() => applyPreset({ name: '标准网络', delay: 10, loss: 0, bandwidth: 0 })}>
-                    标准网络
-                  </Button>
-                  <Button block onClick={() => applyPreset({ name: '政务跨域波动', delay: 100, loss: 5, bandwidth: 10 })}>
-                    政务跨域波动
-                  </Button>
-                  <Button block onClick={() => applyPreset({ name: '极端弱网', delay: 500, loss: 20, bandwidth: 1 })}>
-                    极端弱网
-                  </Button>
-                </>
-              )}
-            </Space>
-          </Card>
-        </Col>
+      <Row gutter={[16, 16]}>
+        {presets.map(preset => {
+          const isSelected = selectedPreset === preset.name;
+          const isCurrent = currentPreset === preset.name;
+          const color = presetColors[preset.name] || '#1890ff';
 
-        <Col xs={24} lg={16}>
-          <Card title="自定义参数" size="small">
-            <Space direction="vertical" style={{ width: '100%' }} size="large">
-              <div>
-                <Text strong>网络延迟: <Tag color="blue">{delay}ms</Tag></Text>
-                <Slider min={0} max={1000} value={delay} onChange={setDelay}
-                  marks={{ 0: '0ms', 100: '100ms', 500: '500ms', 1000: '1s' }} />
-              </div>
-              <div>
-                <Text strong>丢包率: <Tag color={loss > 10 ? 'red' : 'green'}>{loss}%</Tag></Text>
-                <Slider min={0} max={50} value={loss} onChange={setLoss}
-                  marks={{ 0: '0%', 5: '5%', 20: '20%', 50: '50%' }} />
-              </div>
-              <div>
-                <Text strong>带宽限制: <Tag>{bandwidth === 0 ? '无限制' : bandwidth + 'Mbps'}</Tag></Text>
-                <Slider min={0} max={100} value={bandwidth} onChange={setBandwidth}
-                  marks={{ 0: '无限', 1: '1M', 10: '10M', 100: '100M' }} />
-              </div>
+          return (
+            <Col xs={24} sm={12} lg={8} xl={8} xxl={4} key={preset.name}>
+              <Card
+                hoverable
+                onClick={() => setSelectedPreset(preset.name)}
+                style={{
+                  borderRadius: 12,
+                  border: isSelected ? `2px solid ${color}` : '2px solid transparent',
+                  boxShadow: isSelected ? `0 4px 12px ${color}33` : '0 2px 8px rgba(0,0,0,0.08)',
+                  transition: 'all 0.3s ease',
+                  background: isSelected ? `${color}08` : '#fff',
+                  height: '100%',
+                }}
+                styles={{ body: { padding: 20 } }}
+              >
+                <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                  {presetIcons[preset.name]}
+                </div>
 
-              <Descriptions bordered size="small" column={3}>
-                <Descriptions.Item label="延迟">{delay}ms</Descriptions.Item>
-                <Descriptions.Item label="丢包">{loss}%</Descriptions.Item>
-                <Descriptions.Item label="带宽">{bandwidth || '无限制'}Mbps</Descriptions.Item>
-              </Descriptions>
+                <Title level={5} style={{ textAlign: 'center', marginBottom: 8 }}>
+                  {preset.name}
+                  {isCurrent && (
+                    <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>当前</Tag>
+                  )}
+                </Title>
 
-              <Button type="primary" block size="large" onClick={handleApply} loading={applying}>
-                应用弱网设置
-              </Button>
-            </Space>
-          </Card>
-        </Col>
+                <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginBottom: 16, minHeight: 40 }}>
+                  {preset.description}
+                </Text>
+
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Tag color={preset.delay === 0 ? 'green' : 'blue'}>
+                    延迟: {preset.delay}ms
+                  </Tag>
+                  <Tag color={preset.loss === 0 ? 'green' : preset.loss > 15 ? 'red' : 'orange'}>
+                    丢包: {preset.loss}%
+                  </Tag>
+                  <Tag color={preset.bandwidth === 0 ? 'green' : 'purple'}>
+                    带宽: {preset.bandwidth === 0 ? '无限制' : `${preset.bandwidth}Mbps`}
+                  </Tag>
+                </div>
+              </Card>
+            </Col>
+          );
+        })}
       </Row>
+
+      <Card style={{ marginTop: 24, textAlign: 'center' }}>
+        <div style={{ marginBottom: 16 }}>
+          <Text type="secondary">
+            当前选中: <Text strong>{selectedPreset}</Text>
+            {selectedPreset !== currentPreset && (
+              <Text type="warning" style={{ marginLeft: 8 }}>
+                (未应用)
+              </Text>
+            )}
+          </Text>
+        </div>
+        <Button
+          type="primary"
+          size="large"
+          onClick={handleApply}
+          loading={applying}
+          disabled={selectedPreset === currentPreset}
+          style={{ minWidth: 200 }}
+        >
+          应用弱网设置
+        </Button>
+      </Card>
     </div>
   );
 };
