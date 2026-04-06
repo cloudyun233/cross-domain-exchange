@@ -30,23 +30,65 @@
 
 ## 2. 快速启动
 
-### 本地开发
+### 方式一：完整 Docker 部署（推荐）
 
 ```bash
-# 1. 启动EMQX
-docker-compose up -d
+# 1. 先启动 EMQX
+docker-compose up -d emqx
 
-# 2. 启动后端 (需要JDK 17，maven已内置)
+# 2. 配置 EMQX Webhook (用于审计日志)
+# 登录 EMQX 管理控制台 http://localhost:18083 (默认账号: admin / public)
+# 在 "集成" -> "Webhook" -> "创建"
+# URL: http://host.docker.internal:8080/api/webhook/emqx
+# 启用的事件: client.connected, client.disconnected, message.publish, 
+#             client.authorize, client.subscribe, message.delivered
+# 请求头: Content-Type: application/json
+
+# 3. 本地打包后端（避免 Docker 内下载依赖）
+cd backend
+.\mvnw.cmd clean package -DskipTests
+
+# 4. 本地打包前端（避免 Docker 内下载依赖）
+cd ../frontend
+npm install
+npm run build
+
+# 5. 启动所有服务
+cd ..
+docker-compose up -d --build
+```
+
+访问地址：
+- 前端: <http://localhost>
+- 后端API: <http://localhost:8080>
+- EMQX管理控制台: <http://localhost:18083>
+
+---
+
+### 方式二：混合开发模式（仅 EMQX Docker）
+
+> **注意**：此模式下后端在本地 Windows 运行，**弱网模拟功能不可用**（需要 Linux tc 命令）。如需弱网模拟，请使用方式一（完整 Docker 部署）。
+
+```bash
+# 1. 启动 EMQX
+docker-compose up -d emqx
+
+# 2. 配置 EMQX Webhook (可选，用于审计日志)
+# URL: http://host.docker.internal:8080/api/webhook/emqx
+# 其他配置同方式一
+
+# 3. 本地启动后端（使用 local profile，EMQX 地址为 localhost）
 cd backend
 .\mvnw.cmd spring-boot:run
 
-# 3. 启动前端 (需要Node.js 18+)
-cd frontend
+# 4. 本地启动前端
+cd ../frontend
 npm install
 npm run dev
 ```
 
-- 前端访问: <http://localhost:5173>
+访问地址：
+- 前端: <http://localhost:5173>
 - 后端API: <http://localhost:8080>
 - EMQX管理控制台: <http://localhost:18083>
 
@@ -67,23 +109,27 @@ npm run dev
 2. 确保后端服务已启动（端口8080）
 3. 确保前端服务已启动（端口5173）
 
----
+***
 
 ## 第一阶段：数据发布
 
 ### 步骤1.1：生产者登录
+
 - **操作**：以 `producer_swu` 登录，密码 `123456`
 
 ### 步骤1.2：进入数据发布页面
+
 - **操作**：点击导航栏"数据发布"
 
 ### 步骤1.3：选择主题并配置消息
+
 - **操作**：
   - 选择主题 `/cross_domain/medical/hosp_swu/patient/update`
   - 填写JSON消息内容
   - 选择 QoS 1
 
 ### 步骤1.4：发布消息
+
 - **操作**：点击"发布消息"按钮
 - **技术流程**：
   1. 前端调用 `/api/topics/publish` 接口（携带JWT）
@@ -92,19 +138,21 @@ npm run dev
   4. MqttClientService为该用户建立独立的MQTT连接（clientId=用户名）
   5. 通过HiveMQ MQTT Client（TLS优先，TCP回退）向EMQX发布消息
   6. EMQX进行身份认证（校验JWT）和ACL权限校验
-  7. 鉴权通过后，EMQX持久化消息到durable_storage
+  7. 鉴权通过后，EMQX持久化消息到durable\_storage
   8. AuditService.log()记录审计日志到H2数据库
   9. EMQX通过Webhook回调通知后端
 - **预期**：前端显示"消息发布成功！"提示
 
----
+***
 
 ## 第二阶段：管理端监控
 
 ### 步骤2.1：管理员登录
+
 - **操作**：以 `admin` 登录，密码 `admin123`
 
 ### 步骤2.2：查看监控大盘
+
 - **操作**：点击"监控大盘"
 - **技术流程**：
   - MonitorController调用EMQX REST API获取实时状态数据
@@ -117,20 +165,24 @@ npm run dev
   - 显示协议标识（TLS/TCP）
 
 ### 步骤2.3：查看审计日志
-- **操作**：点击"审计日志"
-- **预期**：显示producer_swu的发布记录
 
----
+- **操作**：点击"审计日志"
+- **预期**：显示producer\_swu的发布记录
+
+***
 
 ## 第三阶段：数据订阅
 
 ### 步骤3.1：消费者登录
+
 - **操作**：以 `consumer_social` 登录，密码 `123456`
 
 ### 步骤3.2：进入数据订阅页面
+
 - **操作**：点击"数据订阅"
 
 ### 步骤3.3：开始监听
+
 - **操作**：
   - 选择 `/cross_domain/medical/#` 主题
   - 点击"开始监听"
@@ -143,22 +195,24 @@ npm run dev
 - **预期**：前端显示"SSE连接已建立, 等待消息..."
 
 ### 步骤3.4：实时接收消息
-- **操作**：切换回producer_swu账号，再次发布一条消息
-- **技术流程**：
-  1. EMQX收到新消息，自动转发给consumer_social
-  2. 后端通过SseEmitter将消息推送到前端
-- **预期**：consumer_social页面实时显示收到的消息
 
----
+- **操作**：切换回producer\_swu账号，再次发布一条消息
+- **技术流程**：
+  1. EMQX收到新消息，自动转发给consumer\_social
+  2. 后端通过SseEmitter将消息推送到前端
+- **预期**：consumer\_social页面实时显示收到的消息
+
+***
 
 ## 第四阶段：安全拦截 + 动态ACL
 
 ### 步骤4.1：无权限发布被拦截
+
 - **操作**：
-  - 保持consumer_social登录状态
+  - 保持consumer\_social登录状态
   - 尝试进入"数据发布"页面并发布消息
 - **技术流程**：
-  - EMQX进行ACL校验，发现consumer_social没有publish权限
+  - EMQX进行ACL校验，发现consumer\_social没有publish权限
   - 直接拦截请求
   - 审计日志标红记录
 - **预期**：
@@ -166,6 +220,7 @@ npm run dev
   - 审计日志中显示红色的失败记录
 
 ### 步骤4.2：管理员添加ACL权限
+
 - **操作**：
   - 切换到admin账号
   - 进入"ACL规则管理"
@@ -183,40 +238,45 @@ npm run dev
 - **预期**：提示"ACL规则创建成功（已同步到Broker）"
 
 ### 步骤4.3：新用户订阅接收消息
+
 - **操作**：
   - 以 `consumer_c` 登录，密码 `123456`
   - 进入"数据订阅"页面
   - 选择 `/cross_domain/medical/#` 主题
   - 点击"开始监听"
-  - 切换回producer_swu发布一条消息
-- **预期**：consumer_c能够成功接收消息
+  - 切换回producer\_swu发布一条消息
+- **预期**：consumer\_c能够成功接收消息
 
----
+***
 
 ## 第五阶段：弱网模拟
 
 > **注意**：弱网模拟功能仅限管理员使用，且需要在 Linux Docker 环境中运行。
 
 ### 步骤5.1：管理员登录
+
 - **操作**：以 `admin` 登录，密码 `admin123`
 
 ### 步骤5.2：进入弱网模拟页面
+
 - **操作**：点击导航栏"弱网模拟"
 - **预期**：显示5个预设场景卡片
 
 ### 步骤5.3：选择预设场景
+
 - **操作**：点击选择一个预设场景卡片
 - **预设场景说明**：
 
-| 场景名称 | 延迟 | 丢包率 | 带宽 | 适用场景 |
-|---------|------|--------|------|---------|
-| 无限制 | 0ms | 0% | 无限制 | 默认状态，恢复正常网络 |
-| 标准网络 | 10ms | 0% | 无限制 | 模拟正常网络环境 |
-| 政务跨域波动 | 100ms | 5% | 10Mbps | 模拟跨域网络波动 |
-| 普通弱网 | 250ms | 15% | 2Mbps | 模拟中等弱网环境 |
-| 极端弱网 | 500ms | 30% | 1Mbps | 模拟极端网络条件 |
+| 场景名称   | 延迟    | 丢包率 | 带宽     | 适用场景        |
+| ------ | ----- | --- | ------ | ----------- |
+| 无限制    | 0ms   | 0%  | 无限制    | 默认状态，恢复正常网络 |
+| 标准网络   | 10ms  | 0%  | 无限制    | 模拟正常网络环境    |
+| 政务跨域波动 | 100ms | 5%  | 10Mbps | 模拟跨域网络波动    |
+| 普通弱网   | 250ms | 15% | 2Mbps  | 模拟中等弱网环境    |
+| 极端弱网   | 500ms | 30% | 1Mbps  | 模拟极端网络条件    |
 
 ### 步骤5.4：应用弱网设置
+
 - **操作**：点击"应用弱网设置"按钮
 - **技术流程**：
   1. 前端调用 `/api/network/simulate` 接口（需要ADMIN权限）
@@ -226,34 +286,36 @@ npm run dev
 - **预期**：提示"弱网模拟已设置: {场景名称}"
 
 ### 步骤5.5：验证弱网效果
+
 - **操作**：
-  - 切换到producer_swu账号发布消息
+  - 切换到producer\_swu账号发布消息
   - 观察消息传输延迟和丢包情况
 - **预期**：消息传输受到弱网参数影响
 
 ### 步骤5.6：恢复网络
+
 - **操作**：选择"无限制"预设并应用
 - **预期**：网络恢复正常
 
----
+***
 
 ## 功能覆盖清单
 
-| 功能模块 | 覆盖情况 |
-|---------|---------|
-| 用户级MQTT连接 | ✅ |
-| TLS/TCP自动回退 | ✅ |
-| EMQX全权ACL鉴权 | ✅ |
-| JWT登录与Broker鉴权分离 | ✅ |
-| 动态ACL权限管理 | ✅ |
-| 数据格式转换（XML↔JSON） | ✅ |
-| SSE实时推送 | ✅ |
-| 全链路审计 | ✅ |
-| 实时监控大盘 | ✅ |
-| 拓扑图可视化 | ✅ |
-| 离线消息补发 | ✅ |
-| 弱网模拟（Linux TC） | ✅ |
-| 管理员权限控制 | ✅ |
+| 功能模块             | 覆盖情况 |
+| ---------------- | ---- |
+| 用户级MQTT连接        | ✅    |
+| TLS/TCP自动回退      | ✅    |
+| EMQX全权ACL鉴权      | ✅    |
+| JWT登录与Broker鉴权分离 | ✅    |
+| 动态ACL权限管理        | ✅    |
+| 数据格式转换（XML↔JSON） | ✅    |
+| SSE实时推送          | ✅    |
+| 全链路审计            | ✅    |
+| 实时监控大盘           | ✅    |
+| 拓扑图可视化           | ✅    |
+| 离线消息补发           | ✅    |
+| 弱网模拟（Linux TC）   | ✅    |
+| 管理员权限控制          | ✅    |
 
 ## 5. H2 → MySQL 迁移
 
@@ -273,19 +335,22 @@ cross-domain-exchange/
 │   │   ├── mqtt/         # HiveMQ MQTT Client + EMQX HTTP API
 │   │   ├── security/     # JWT认证
 │   │   └── service/      # 业务服务(接口+实现 + 数据转换)
-│   └── src/main/resources/
-│       ├── db/           # 数据库初始化脚本
-│       └── application*.yml # 配置文件
+│   ├── src/main/resources/
+│   │   ├── db/           # 数据库初始化脚本
+│   │   └── application*.yml # 配置文件
+│   └── Dockerfile        # 后端 Dockerfile (简化版，使用本地打包的 jar)
 ├── frontend/             # React 前端
-│   └── src/
-│       ├── components/   # 通用组件
-│       ├── contexts/     # 认证上下文
-│       ├── layouts/      # Ant Design布局
-│       ├── pages/        # 9个功能页面 (登录、监控大盘、数据发布、数据订阅、ACL管理、审计日志、域管理、客户端管理、弱网模拟)
-│       └── services/     # API封装
+│   ├── src/
+│   │   ├── components/   # 通用组件
+│   │   ├── contexts/     # 认证上下文
+│   │   ├── layouts/      # Ant Design布局
+│   │   ├── pages/        # 9个功能页面 (登录、监控大盘、数据发布、数据订阅、ACL管理、审计日志、域管理、客户端管理、弱网模拟)
+│   │   └── services/     # API封装
+│   ├── nginx.conf        # Nginx 配置
+│   └── Dockerfile        # 前端 Dockerfile (简化版，使用本地打包的 dist)
 ├── emqx/                 # EMQX配置
 ├── scripts/              # 启动脚本、弱网模拟
 ├── docs/                 # 文档
-└── docker-compose.yml    # 容器编排 (仅EMQX)
+└── docker-compose.yml    # 容器编排 (EMQX + 后端 + 前端)
 ```
 

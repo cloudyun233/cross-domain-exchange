@@ -20,6 +20,30 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: cross-domain-backend
+    hostname: backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      emqx:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: cross-domain-frontend
+    hostname: frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
 
 volumes:
   emqx-data:

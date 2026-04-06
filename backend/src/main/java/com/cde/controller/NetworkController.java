@@ -4,6 +4,8 @@ import com.cde.dto.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.Map;
 
 @Slf4j
@@ -12,20 +14,50 @@ import java.util.Map;
 @PreAuthorize("hasRole('ADMIN')")
 public class NetworkController {
 
+    /**
+     * 自动检测网络接口（优先使用 eth0，其次是默认路由接口）
+     */
+    private String detectNetworkInterface() {
+        try {
+            // 先尝试 eth0
+            ProcessBuilder checkEth0 = new ProcessBuilder("sh", "-c", "ip link show eth0 2>/dev/null");
+            Process p = checkEth0.start();
+            if (p.waitFor() == 0) {
+                return "eth0";
+            }
+            
+            // 尝试获取默认路由接口
+            ProcessBuilder getDefaultRoute = new ProcessBuilder("sh", "-c", 
+                "ip route show default | awk '/default/ {print $5}'");
+            p = getDefaultRoute.start();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            String iface = reader.readLine();
+            if (iface != null && !iface.trim().isEmpty()) {
+                return iface.trim();
+            }
+        } catch (Exception e) {
+            log.warn("自动检测网络接口失败，使用默认 eth0", e);
+        }
+        return "eth0";
+    }
+
     @PostMapping("/simulate")
     public ApiResponse<String> simulate(
             @RequestParam(defaultValue = "0") int delayMs,
             @RequestParam(defaultValue = "0") int lossPercent,
             @RequestParam(defaultValue = "0") int bandwidthMbps) {
         try {
+            String iface = detectNetworkInterface();
+            log.info("检测到网络接口: {}", iface);
+            
             String cmd;
             if (delayMs == 0 && lossPercent == 0 && bandwidthMbps == 0) {
-                cmd = "tc qdisc del dev eth0 root 2>/dev/null; echo 'Network reset'";
+                cmd = String.format("tc qdisc del dev %s root 2>/dev/null; echo 'Network reset'", iface);
                 log.info("弱网模拟已重置: 无限制模式");
             } else {
                 cmd = String.format(
-                    "tc qdisc replace dev eth0 root netem delay %dms loss %d%%%s",
-                    delayMs, lossPercent,
+                    "tc qdisc replace dev %s root netem delay %dms loss %d%%%s",
+                    iface, delayMs, lossPercent,
                     bandwidthMbps > 0 ? String.format(" rate %dmbit", bandwidthMbps) : "");
                 log.info("弱网模拟命令: {}", cmd);
             }
@@ -33,11 +65,23 @@ public class NetworkController {
             ProcessBuilder pb = new ProcessBuilder("sh", "-c", cmd);
             pb.redirectErrorStream(true);
             Process process = pb.start();
+            
+            // 读取输出以便调试
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                log.debug("tc 输出: {}", line);
+            }
+            
             int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new RuntimeException("tc 命令执行失败，退出码: " + exitCode);
+            }
 
             String scenario = getScenarioName(delayMs, lossPercent, bandwidthMbps);
-            return ApiResponse.ok(String.format("弱网模拟已设置: %s", scenario), null);
+            return ApiResponse.ok(String.format("弱网模拟已设置: %s (接口: %s)", scenario, iface), null);
         } catch (Exception e) {
+            log.error("弱网模拟设置失败", e);
             return ApiResponse.fail("弱网模拟设置失败(需要在Linux Docker环境中运行): " + e.getMessage());
         }
     }
