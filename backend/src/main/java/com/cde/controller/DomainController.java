@@ -4,12 +4,14 @@ import com.cde.dto.ApiResponse;
 import com.cde.entity.SysDomain;
 import com.cde.service.DomainService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/domains")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class DomainController {
     private final DomainService domainService;
 

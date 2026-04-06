@@ -3,7 +3,6 @@ package com.cde.service.impl;
 import com.cde.mqtt.MqttClientService;
 import com.cde.service.AuditService;
 import com.cde.service.SubscribeService;
-import com.cde.util.MqttTopicUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,15 +36,15 @@ public class SubscribeServiceImpl implements SubscribeService {
 
                 emitter.onCompletion(() -> {
                     log.info("SSE connection completed for user: {}", username);
-                    userEmitters.remove(username);
+                    cleanupUserSession(username);
                 });
                 emitter.onTimeout(() -> {
                     log.info("SSE connection timeout for user: {}", username);
-                    userEmitters.remove(username);
+                    cleanupUserSession(username);
                 });
-                emitter.onError(e -> {
-                    log.warn("SSE connection error for user {}: {}", username, e.getMessage());
-                    userEmitters.remove(username);
+                emitter.onError(error -> {
+                    log.warn("SSE connection error for user {}: {}", username, error.getMessage());
+                    cleanupUserSession(username);
                 });
 
                 try {
@@ -57,17 +56,15 @@ public class SubscribeServiceImpl implements SubscribeService {
                 }
             }
 
-            CopyOnWriteArrayList<String> topics = userTopics.computeIfAbsent(username, k -> new CopyOnWriteArrayList<>());
+            CopyOnWriteArrayList<String> topics = userTopics.computeIfAbsent(username, key -> new CopyOnWriteArrayList<>());
             if (!topics.contains(topic)) {
                 topics.add(topic);
             }
 
-            mqttClientService.subscribeForUser(username, topic, qos, (t, payload) -> {
-                pushMessageToUser(username, t, payload);
-            });
+            mqttClientService.subscribeForUser(username, topic, qos, (messageTopic, payload) ->
+                    pushMessageToUser(username, messageTopic, payload));
 
             auditService.log(username, "subscribe", "订阅主题: " + topic + ", QoS=" + qos, "backend");
-
             return emitter;
         } catch (Exception e) {
             log.error("MQTT订阅失败, user={}, topic={}: {}", username, topic, e.getMessage());
@@ -103,21 +100,27 @@ public class SubscribeServiceImpl implements SubscribeService {
 
     private void pushMessageToUser(String username, String topic, String payload) {
         SseEmitter emitter = userEmitters.get(username);
-        if (emitter != null) {
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("message")
-                        .data(Map.of(
-                                "topic", topic,
-                                "payload", payload,
-                                "timestamp", System.currentTimeMillis()
-                        )));
-            } catch (IOException e) {
-                log.warn("SSE推送失败, 清理连接: username={}", username);
-                userEmitters.remove(username);
-            }
+        if (emitter == null) {
+            return;
+        }
+
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("message")
+                    .data(Map.of(
+                            "topic", topic,
+                            "payload", payload,
+                            "timestamp", System.currentTimeMillis()
+                    )));
+        } catch (IOException e) {
+            log.warn("SSE推送失败，清理连接: username={}", username);
+            cleanupUserSession(username);
         }
     }
 
-
+    private void cleanupUserSession(String username) {
+        userEmitters.remove(username);
+        userTopics.remove(username);
+        mqttClientService.disconnectForUser(username);
+    }
 }

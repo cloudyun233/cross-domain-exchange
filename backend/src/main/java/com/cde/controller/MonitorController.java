@@ -4,12 +4,14 @@ import com.cde.dto.ApiResponse;
 import com.cde.service.MonitorService;
 import com.cde.mqtt.MqttClientService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/monitor")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class MonitorController {
     private final MonitorService monitorService;
     private final MqttClientService mqttClientService;

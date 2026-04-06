@@ -91,6 +91,12 @@
             <version>1.3.13</version>
         </dependency>
 
+        <!-- Netty for SSL/TLS support -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-handler</artifactId>
+        </dependency>
+
         <!-- Jackson XML Support -->
         <dependency>
             <groupId>com.fasterxml.jackson.dataformat</groupId>

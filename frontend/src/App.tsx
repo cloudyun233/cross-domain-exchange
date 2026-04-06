@@ -1,7 +1,9 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import React from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { SubscribeProvider } from './contexts/SubscribeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './layouts/MainLayout';
 import ConnectionStatus from './components/ConnectionStatus';
@@ -14,6 +16,21 @@ import ClientManage from './pages/ClientManage';
 import AclManage from './pages/AclManage';
 import AuditLog from './pages/AuditLog';
 import NetworkSimulate from './pages/NetworkSimulate';
+
+const DefaultRoute: React.FC = () => {
+  const { isAuthenticated, user } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <Navigate
+      to={user?.roleType?.toUpperCase() === 'ADMIN' ? '/dashboard' : '/publish'}
+      replace
+    />
+  );
+};
 
 function App() {
   return (
@@ -28,28 +45,72 @@ function App() {
       }}
     >
       <AuthProvider>
-        <ConnectionStatus />
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            element={
-              <ProtectedRoute>
-                <MainLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/publish" element={<Publish />} />
-            <Route path="/subscribe" element={<Subscribe />} />
-            <Route path="/domains" element={<DomainManage />} />
-            <Route path="/clients" element={<ClientManage />} />
-            <Route path="/acl" element={<AclManage />} />
-            <Route path="/audit" element={<AuditLog />} />
-            <Route path="/network" element={<NetworkSimulate />} />
-          </Route>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+        <SubscribeProvider>
+          <ConnectionStatus />
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              element={
+                <ProtectedRoute>
+                  <MainLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route path="/publish" element={<Publish />} />
+              <Route path="/subscribe" element={<Subscribe />} />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute adminOnly>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/domains"
+                element={
+                  <ProtectedRoute adminOnly>
+                    <DomainManage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/clients"
+                element={
+                  <ProtectedRoute adminOnly>
+                    <ClientManage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/acl"
+                element={
+                  <ProtectedRoute adminOnly>
+                    <AclManage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/audit"
+                element={
+                  <ProtectedRoute adminOnly>
+                    <AuditLog />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/network"
+                element={
+                  <ProtectedRoute adminOnly>
+                    <NetworkSimulate />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
+            <Route path="/" element={<DefaultRoute />} />
+            <Route path="*" element={<DefaultRoute />} />
+          </Routes>
+        </SubscribeProvider>
       </AuthProvider>
     </ConfigProvider>
   );

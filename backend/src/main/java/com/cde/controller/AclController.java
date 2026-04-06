@@ -4,12 +4,14 @@ import com.cde.dto.ApiResponse;
 import com.cde.entity.SysTopicAcl;
 import com.cde.service.AclService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/acl-rules")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class AclController {
     private final AclService aclService;
 

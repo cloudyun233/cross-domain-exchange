@@ -5,6 +5,7 @@
 mqtt:
   broker:
     host: emqx
+    insecure-trust-all: true
 
 # EMQX HTTP API
 emqx:

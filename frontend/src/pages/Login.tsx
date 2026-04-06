@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Form, Input, Button, Typography, message, Space } from 'antd';
-import { UserOutlined, LockOutlined, SafetyOutlined } from '@ant-design/icons';
+import { Button, Card, Form, Input, Space, Typography, message } from 'antd';
+import { LockOutlined, SafetyOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
 
 const { Title, Text, Paragraph } = Typography;
@@ -15,8 +15,10 @@ const Login: React.FC = () => {
     setLoading(true);
     try {
       await login(values.username, values.password);
+      const savedUser = sessionStorage.getItem('user');
+      const roleType = savedUser ? JSON.parse(savedUser).roleType : '';
       message.success('登录成功，登录状态仅在当前标签页有效');
-      navigate('/dashboard');
+      navigate(roleType?.toUpperCase() === 'ADMIN' ? '/dashboard' : '/publish');
     } catch (err: any) {
       message.error(err.message || '登录失败');
     } finally {
@@ -28,7 +30,8 @@ const Login: React.FC = () => {
     <div className="login-bg">
       <Card
         style={{
-          width: 420, borderRadius: 12,
+          width: 420,
+          borderRadius: 12,
           boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
         }}
         styles={{ body: { padding: 40 } }}
@@ -53,7 +56,7 @@ const Login: React.FC = () => {
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading}>
-              登 录
+              登录
             </Button>
           </Form.Item>
         </Form>

@@ -5,6 +5,7 @@ import com.cde.dto.ApiResponse;
 import com.cde.entity.SysUser;
 import com.cde.mapper.SysUserMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,6 +15,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/clients")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class ClientController {
     private final SysUserMapper userMapper;
     private final PasswordEncoder passwordEncoder;

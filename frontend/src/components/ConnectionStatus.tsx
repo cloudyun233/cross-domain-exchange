@@ -54,7 +54,7 @@ const ConnectionStatus: React.FC = () => {
   return (
     <div style={{
       position: 'fixed',
-      top: 16,
+      bottom: 16,
       right: 16,
       zIndex: 9999,
       background: '#fff',

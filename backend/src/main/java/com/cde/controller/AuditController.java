@@ -5,12 +5,13 @@ import com.cde.dto.ApiResponse;
 import com.cde.entity.SysAuditLog;
 import com.cde.service.AuditService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/audit-logs")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class AuditController {
     private final AuditService auditService;
 

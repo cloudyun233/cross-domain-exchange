@@ -1,8 +1,6 @@
 package com.cde.security;
 
-import com.cde.entity.SysUser;
-import com.cde.mapper.SysUserMapper;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,7 +21,6 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
-    private final SysUserMapper userMapper;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,

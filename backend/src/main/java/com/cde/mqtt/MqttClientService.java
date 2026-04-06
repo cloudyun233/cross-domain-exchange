@@ -12,6 +12,7 @@ import com.hivemq.client.mqtt.mqtt5.message.connect.connack.Mqtt5ConnAck;
 import com.hivemq.client.mqtt.datatypes.MqttQos;
 import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5PublishResult;
 import com.hivemq.client.mqtt.mqtt5.message.subscribe.suback.Mqtt5SubAck;
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +42,9 @@ public class MqttClientService {
 
     @Value("${mqtt.broker.tcp-port:1883}")
     private int tcpPort;
+
+    @Value("${mqtt.broker.insecure-trust-all:false}")
+    private boolean insecureTrustAll;
 
     @Value("${mqtt.connect.timeout-seconds:10}")
     private int connectTimeoutSeconds;
@@ -83,18 +87,8 @@ public class MqttClientService {
         disconnectForUser(username);
 
         try {
-            SysUser user = sysUserMapper.selectOne(
-                    new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
-            String clientId = user != null ? user.getClientId() : username;
-
-            Mqtt5AsyncClient mqttClient = MqttClient.builder()
-                    .useMqttVersion5()
-                    .identifier(clientId)
-                    .serverHost(brokerHost)
-                    .serverPort(tlsPort)
-                    .sslWithDefaultConfig()
-                    .automaticReconnectWithDefaultConfig()
-                    .buildAsync();
+            String clientId = resolveClientId(username);
+            Mqtt5AsyncClient mqttClient = buildTlsClient(clientId);
 
             Mqtt5SimpleAuth simpleAuth = Mqtt5SimpleAuth.builder()
                     .username(username)
@@ -108,8 +102,7 @@ public class MqttClientService {
                     .sessionExpiryInterval(3600)
                     .keepAlive(60)
                     .send();
-
-            Mqtt5ConnAck connAck = connectFuture.get(connectTimeoutSeconds, TimeUnit.SECONDS);
+            connectFuture.get(connectTimeoutSeconds, TimeUnit.SECONDS);
 
             UserMqttContext ctx = new UserMqttContext(mqttClient);
             synchronized (ctx.lock) {
@@ -119,7 +112,8 @@ public class MqttClientService {
             setupPublishCallback(ctx);
             userContexts.put(username, ctx);
 
-            log.info("MQTT connected for user {} over TLS: clientId={}", username, clientId);
+            log.info("MQTT connected for user {} over TLS: clientId={}, insecureTrustAll={}",
+                    username, clientId, insecureTrustAll);
 
         } catch (TimeoutException e) {
             log.warn("MQTT TLS connection timeout for user {} after {} seconds, trying TCP", username, connectTimeoutSeconds);
@@ -138,9 +132,7 @@ public class MqttClientService {
 
     private boolean tryConnectTcpForUser(String username, String jwtToken) {
         try {
-            SysUser user = sysUserMapper.selectOne(
-                    new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
-            String clientId = user != null ? user.getClientId() : username;
+            String clientId = resolveClientId(username);
 
             Mqtt5AsyncClient mqttClient = MqttClient.builder()
                     .useMqttVersion5()
@@ -149,21 +141,6 @@ public class MqttClientService {
                     .serverPort(tcpPort)
                     .automaticReconnectWithDefaultConfig()
                     .buildAsync();
-
-            Mqtt5SimpleAuth simpleAuth = Mqtt5SimpleAuth.builder()
-                    .username(username)
-                    .password(jwtToken.getBytes(StandardCharsets.UTF_8))
-                    .build();
-
-            CompletableFuture<Mqtt5ConnAck> connectFuture = mqttClient.toAsync()
-                    .connectWith()
-                    .simpleAuth(simpleAuth)
-                    .cleanStart(false)
-                    .sessionExpiryInterval(3600)
-                    .keepAlive(60)
-                    .send();
-
-            Mqtt5ConnAck connAck = connectFuture.get(connectTimeoutSeconds, TimeUnit.SECONDS);
 
             UserMqttContext ctx = new UserMqttContext(mqttClient);
             synchronized (ctx.lock) {
@@ -180,6 +157,33 @@ public class MqttClientService {
             log.error("MQTT TCP connection failed for user {}: {}", username, e.getMessage());
             return false;
         }
+    }
+
+    private String resolveClientId(String username) {
+        SysUser user = sysUserMapper.selectOne(
+                new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
+        return user != null ? user.getClientId() : username;
+    }
+
+    private Mqtt5AsyncClient buildTlsClient(String clientId) {
+        var builder = MqttClient.builder()
+                .useMqttVersion5()
+                .identifier(clientId)
+                .serverHost(brokerHost)
+                .serverPort(tlsPort);
+
+        if (insecureTrustAll) {
+            builder = builder.sslConfig()
+                    .trustManagerFactory(InsecureTrustManagerFactory.INSTANCE)
+                    .hostnameVerifier((hostname, session) -> true)
+                    .applySslConfig();
+        } else {
+            builder = builder.sslWithDefaultConfig();
+        }
+
+        return builder
+                .automaticReconnectWithDefaultConfig()
+                .buildAsync();
     }
 
     private void setupPublishCallback(UserMqttContext ctx) {

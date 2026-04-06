@@ -1,11 +1,19 @@
 import React, { useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Tag, Typography, Space, Avatar, Dropdown } from 'antd';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Avatar, Button, Dropdown, Layout, Menu, Space, Tag, Typography } from 'antd';
 import {
-  DashboardOutlined, SendOutlined, CloudDownloadOutlined,
-  ApartmentOutlined, UserOutlined, SafetyOutlined,
-  FileTextOutlined, WifiOutlined, LogoutOutlined,
-  MenuFoldOutlined, MenuUnfoldOutlined, SettingOutlined,
+  ApartmentOutlined,
+  CloudDownloadOutlined,
+  DashboardOutlined,
+  FileTextOutlined,
+  LogoutOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  SafetyOutlined,
+  SendOutlined,
+  SettingOutlined,
+  UserOutlined,
+  WifiOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -17,11 +25,16 @@ const MainLayout: React.FC = () => {
   const { user, clientId, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const isAdmin = user?.roleType?.toUpperCase() === 'ADMIN';
 
-  const menuItems = [
-    { key: '/dashboard', icon: <DashboardOutlined />, label: '监控大盘' },
+  const commonMenuItems = [
     { key: '/publish', icon: <SendOutlined />, label: '数据发布' },
     { key: '/subscribe', icon: <CloudDownloadOutlined />, label: '数据订阅' },
+  ];
+
+  const adminMenuItems = [
+    { key: '/dashboard', icon: <DashboardOutlined />, label: '监控大盘' },
+    ...commonMenuItems,
     { type: 'divider' as const },
     { key: '/domains', icon: <ApartmentOutlined />, label: '安全域管理' },
     { key: '/clients', icon: <UserOutlined />, label: '客户端管理' },
@@ -31,20 +44,31 @@ const MainLayout: React.FC = () => {
     { key: '/network', icon: <WifiOutlined />, label: '弱网模拟' },
   ];
 
+  const menuItems = isAdmin ? adminMenuItems : commonMenuItems;
+
   const roleColors: Record<string, string> = {
-    admin: 'red', producer: 'blue', consumer: 'green',
+    admin: 'red',
+    producer: 'blue',
+    consumer: 'green',
   };
 
   const roleLabels: Record<string, string> = {
-    admin: '管理员', producer: '生产者', consumer: '消费者',
+    admin: '管理员',
+    producer: '生产者',
+    consumer: '消费者',
   };
+
+  const normalizedRole = user?.roleType?.toLowerCase() || '';
 
   const dropdownItems = [
     {
       key: 'logout',
       icon: <LogoutOutlined />,
       label: '退出登录',
-      onClick: () => { logout(); navigate('/login'); },
+      onClick: () => {
+        logout();
+        navigate('/login');
+      },
     },
   ];
 
@@ -61,7 +85,10 @@ const MainLayout: React.FC = () => {
         }}
       >
         <div style={{
-          height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          height: 64,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           borderBottom: '1px solid rgba(255,255,255,0.1)',
         }}>
           <SettingOutlined style={{ fontSize: 24, color: '#1890ff' }} />
@@ -83,9 +110,13 @@ const MainLayout: React.FC = () => {
 
       <Layout>
         <Header style={{
-          padding: '0 24px', background: '#fff',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.08)', zIndex: 1,
+          padding: '0 24px',
+          background: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+          zIndex: 1,
         }}>
           <Button
             type="text"
@@ -93,8 +124,8 @@ const MainLayout: React.FC = () => {
             onClick={() => setCollapsed(!collapsed)}
           />
           <Space size="middle">
-            <Tag color={roleColors[user?.roleType || ''] || 'default'}>
-              {roleLabels[user?.roleType || ''] || user?.roleType}
+            <Tag color={roleColors[normalizedRole] || 'default'}>
+              {roleLabels[normalizedRole] || user?.roleType}
             </Tag>
             <Text type="secondary">域: {user?.domainName || user?.domainCode}</Text>
             <Dropdown menu={{ items: dropdownItems }} placement="bottomRight">
@@ -107,8 +138,11 @@ const MainLayout: React.FC = () => {
         </Header>
 
         <Content style={{
-          margin: 16, padding: 20,
-          background: '#f0f2f5', minHeight: 280, borderRadius: 8,
+          margin: 16,
+          padding: 20,
+          background: '#f0f2f5',
+          minHeight: 280,
+          borderRadius: 8,
         }}>
           <Outlet />
         </Content>

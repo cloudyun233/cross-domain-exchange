@@ -53,6 +53,7 @@ mqtt:
     host: localhost
     tls-port: 8883
     tcp-port: 1883
+    insecure-trust-all: false
     client-id-prefix: cde-backend
     username: admin
     domain-code: admin
