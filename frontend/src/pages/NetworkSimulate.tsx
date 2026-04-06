@@ -83,7 +83,7 @@ const NetworkSimulate: React.FC = () => {
     );
   }
 
-  if (user?.roleType !== 'ADMIN') {
+  if (!user || user.roleType?.toUpperCase() !== 'ADMIN') {
     return (
       <Result
         status="403"

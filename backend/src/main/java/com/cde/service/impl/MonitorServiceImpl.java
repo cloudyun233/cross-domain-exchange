@@ -25,6 +25,10 @@ public class MonitorServiceImpl implements MonitorService {
     private volatile Map<String, Object> cachedStats = new HashMap<>();
     private volatile Map<String, Object> cachedClients = new HashMap<>();
     private final Deque<Map<String, Object>> trafficHistory = new ConcurrentLinkedDeque<>();
+    
+    // 保存上一次的累计值用于计算增量
+    private volatile long lastMessagesReceived = 0;
+    private volatile long lastMessagesSent = 0;
 
     /**
      * 定时采集EMQX指标 (每5秒)
@@ -38,12 +42,30 @@ public class MonitorServiceImpl implements MonitorService {
             cachedStats = stats;
             cachedClients = clients;
 
+            // 获取当前累计值
+            long currentMessagesReceived = ((Number) stats.getOrDefault("messages.received", 0)).longValue();
+            long currentMessagesSent = ((Number) stats.getOrDefault("messages.sent", 0)).longValue();
+            
+            // 计算增量（处理首次采集的情况）
+            long deltaReceived = lastMessagesReceived == 0 ? 0 : currentMessagesReceived - lastMessagesReceived;
+            long deltaSent = lastMessagesSent == 0 ? 0 : currentMessagesSent - lastMessagesSent;
+            
+            // 确保增量不为负（处理重启或数据重置的情况
+            deltaReceived = Math.max(0, deltaReceived);
+            deltaSent = Math.max(0, deltaSent);
+            
+            // 更新上一次的值
+            lastMessagesReceived = currentMessagesReceived;
+            lastMessagesSent = currentMessagesSent;
+
             // 记录流量历史 (保留最近60条=5分钟)
             Map<String, Object> snapshot = new HashMap<>();
             snapshot.put("time", System.currentTimeMillis());
-            snapshot.put("messagesIn", stats.getOrDefault("messages.received", 0));
-            snapshot.put("messagesOut", stats.getOrDefault("messages.sent", 0));
+            snapshot.put("messagesIn", deltaReceived);
+            snapshot.put("messagesOut", deltaSent);
             snapshot.put("connections", stats.getOrDefault("connections.count", 0));
+            snapshot.put("totalMessagesReceived", currentMessagesReceived);
+            snapshot.put("totalMessagesSent", currentMessagesSent);
             trafficHistory.addLast(snapshot);
             while (trafficHistory.size() > 60) {
                 trafficHistory.pollFirst();

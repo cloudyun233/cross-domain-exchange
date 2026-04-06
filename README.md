@@ -82,7 +82,7 @@ cd backend
 .\mvnw.cmd spring-boot:run
 
 # 4. 本地启动前端
-cd ../frontend
+cd frontend
 npm install
 npm run dev
 ```
