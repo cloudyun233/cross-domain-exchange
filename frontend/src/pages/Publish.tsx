@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Input, Radio, Row, Space, Tag, Tree, Typography, message } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
+import { usePublish, PublishHistoryItem } from '../contexts/PublishContext';
 
 const { TextArea } = Input;
 const { Title, Text } = Typography;
@@ -17,15 +18,6 @@ interface DomainTreeNode {
   children?: DomainTreeNode[];
 }
 
-const STRUCTURED_SAMPLE = `{
-  "patientId": "P20260401001",
-  "name": "张三",
-  "diagnosis": "常规体检",
-  "timestamp": "2026-04-01T08:00:00"
-}`;
-
-const PLAIN_TEXT_SAMPLE = '普通文本消息：西南医院已完成病历脱敏';
-
 const formatLabels: Record<string, string> = {
   structured: '结构化',
   text: '文本',
@@ -33,13 +25,21 @@ const formatLabels: Record<string, string> = {
 
 const Publish: React.FC = () => {
   const [topicTree, setTopicTree] = useState<DomainTreeNode[]>([]);
-  const [selectedNode, setSelectedNode] = useState<DomainTreeNode | null>(null);
-  const [selectedTopic, setSelectedTopic] = useState('');
-  const [payload, setPayload] = useState(STRUCTURED_SAMPLE);
-  const [qos, setQos] = useState(1);
-  const [format, setFormat] = useState<'structured' | 'text'>('structured');
   const [publishing, setPublishing] = useState(false);
-  const [history, setHistory] = useState<any[]>([]);
+  const {
+    selectedTopic,
+    selectedNode,
+    qos,
+    format,
+    payload,
+    history,
+    setSelectedTopic,
+    setSelectedNode,
+    setQos,
+    setFormat,
+    setPayload,
+    addHistory,
+  } = usePublish();
 
   useEffect(() => {
     api.getDomainTree().then((resp) => {
@@ -48,11 +48,6 @@ const Publish: React.FC = () => {
       }
     });
   }, []);
-
-  const handleFormatChange = (nextFormat: 'structured' | 'text') => {
-    setFormat(nextFormat);
-    setPayload(nextFormat === 'text' ? PLAIN_TEXT_SAMPLE : STRUCTURED_SAMPLE);
-  };
 
   const handlePublish = async () => {
     if (!selectedTopic) {
@@ -69,23 +64,14 @@ const Publish: React.FC = () => {
       const res = await api.publish(selectedTopic, payload, qos, format);
       if (res.success) {
         message.success('消息发布成功');
-        setHistory((prev: any[]) => [
-          { topic: selectedTopic, qos, format, time: new Date().toLocaleString(), success: true },
-          ...prev.slice(0, 19),
-        ]);
+        addHistory({ topic: selectedTopic, qos, format, time: new Date().toLocaleString(), success: true });
       } else {
         message.error(res.message || '发布失败');
-        setHistory((prev: any[]) => [
-          { topic: selectedTopic, qos, format, time: new Date().toLocaleString(), success: false, error: res.message },
-          ...prev.slice(0, 19),
-        ]);
+        addHistory({ topic: selectedTopic, qos, format, time: new Date().toLocaleString(), success: false, error: res.message });
       }
     } catch (e: any) {
       message.error(e.message || '发布失败');
-      setHistory((prev: any[]) => [
-        { topic: selectedTopic, qos, format, time: new Date().toLocaleString(), success: false, error: e.message },
-        ...prev.slice(0, 19),
-      ]);
+      addHistory({ topic: selectedTopic, qos, format, time: new Date().toLocaleString(), success: false, error: e.message });
     } finally {
       setPublishing(false);
     }
@@ -153,7 +139,7 @@ const Publish: React.FC = () => {
 
               <div>
                 <Text strong>消息格式：</Text>
-                <Radio.Group value={format} onChange={(e) => handleFormatChange(e.target.value)} style={{ marginLeft: 8 }}>
+                <Radio.Group value={format} onChange={(e) => setFormat(e.target.value)} style={{ marginLeft: 8 }}>
                   <Radio.Button value="structured">结构化</Radio.Button>
                   <Radio.Button value="text">文本</Radio.Button>
                 </Radio.Group>
@@ -190,7 +176,7 @@ const Publish: React.FC = () => {
 
       {history.length > 0 && (
         <Card title="发布历史" size="small">
-          {history.map((item: any, index: number) => (
+          {history.map((item: PublishHistoryItem, index: number) => (
             <div key={index} style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
               <Tag color={item.success ? 'green' : 'red'}>{item.success ? '成功' : '失败'}</Tag>
               <Text code>{item.topic}</Text>

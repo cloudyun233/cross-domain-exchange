@@ -25,8 +25,12 @@ interface SubscribeContextType {
   listening: boolean;
   activeTopic: string | null;
   messages: ReceivedMessage[];
+  selectedKey: string[];
+  selectedName: string;
   setTopic: (topic: string) => void;
   setQos: (qos: number) => void;
+  setSelectedKey: (keys: string[]) => void;
+  setSelectedName: (name: string) => void;
   startListening: () => Promise<void>;
   stopListening: (options?: StopListeningOptions) => Promise<void>;
   clearMessages: () => void;
@@ -34,12 +38,38 @@ interface SubscribeContextType {
 
 const SubscribeContext = createContext<SubscribeContextType | undefined>(undefined);
 
+const STORAGE_KEY = 'subscribe_state';
+
+const loadFromStorage = (): { selectedKey?: string[]; selectedName?: string; qos?: number } => {
+  try {
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return {};
+};
+
+const saveToStorage = (state: { selectedKey?: string[]; selectedName?: string; qos?: number }) => {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore storage errors
+  }
+};
+
 export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const saved = loadFromStorage();
+
   const [topic, setTopic] = useState('');
-  const [qos, setQos] = useState(1);
+  const [qos, setQosState] = useState<number>(saved.qos ?? 1);
   const [listening, setListening] = useState(false);
   const [activeTopic, setActiveTopic] = useState<string | null>(null);
   const [messages, setMessages] = useState<ReceivedMessage[]>([]);
+  const [selectedKey, setSelectedKeyState] = useState<string[]>(saved.selectedKey || []);
+  const [selectedName, setSelectedNameState] = useState<string>(saved.selectedName || '');
   const { isAuthenticated } = useAuth();
 
   const esRef = useRef<EventSourcePolyfill | null>(null);
@@ -222,6 +252,21 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     setMessages([]);
   };
 
+  const setQos = (newQos: number) => {
+    setQosState(newQos);
+    saveToStorage({ selectedKey, selectedName, qos: newQos });
+  };
+
+  const setSelectedKey = (keys: string[]) => {
+    setSelectedKeyState(keys);
+    saveToStorage({ selectedKey: keys, selectedName, qos });
+  };
+
+  const setSelectedName = (name: string) => {
+    setSelectedNameState(name);
+    saveToStorage({ selectedKey, selectedName: name, qos });
+  };
+
   useEffect(() => {
     if (!isAuthenticated) {
       if (activeTopicRef.current) {
@@ -245,8 +290,12 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
         listening,
         activeTopic,
         messages,
+        selectedKey,
+        selectedName,
         setTopic,
         setQos,
+        setSelectedKey,
+        setSelectedName,
         startListening,
         stopListening,
         clearMessages,

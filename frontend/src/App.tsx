@@ -4,6 +4,7 @@ import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SubscribeProvider } from './contexts/SubscribeContext';
+import { PublishProvider } from './contexts/PublishContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './layouts/MainLayout';
 import ConnectionStatus from './components/ConnectionStatus';
@@ -45,9 +46,10 @@ function App() {
       }}
     >
       <AuthProvider>
-        <SubscribeProvider>
-          <ConnectionStatus />
-          <Routes>
+        <PublishProvider>
+          <SubscribeProvider>
+            <ConnectionStatus />
+            <Routes>
             <Route path="/login" element={<Login />} />
             <Route
               element={
@@ -110,7 +112,8 @@ function App() {
             <Route path="/" element={<DefaultRoute />} />
             <Route path="*" element={<DefaultRoute />} />
           </Routes>
-        </SubscribeProvider>
+          </SubscribeProvider>
+        </PublishProvider>
       </AuthProvider>
     </ConfigProvider>
   );

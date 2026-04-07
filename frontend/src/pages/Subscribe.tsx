@@ -19,16 +19,18 @@ interface DomainTreeNode {
 
 const Subscribe: React.FC = () => {
   const [domainTree, setDomainTree] = useState<DomainTreeNode[]>([]);
-  const [selectedKey, setSelectedKey] = useState<string[]>([]);
-  const [selectedName, setSelectedName] = useState('');
   const {
     topic,
     qos,
     listening,
     activeTopic,
     messages,
+    selectedKey,
+    selectedName,
     setTopic,
     setQos,
+    setSelectedKey,
+    setSelectedName,
     startListening,
     stopListening,
     clearMessages,
