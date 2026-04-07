@@ -30,8 +30,8 @@ public class SubscribeController {
             @RequestParam String topic,
             @RequestParam(defaultValue = "1") int qos,
             @RequestHeader("Authorization") String authHeader,
-            Authentication auth) {
-
+            Authentication auth
+    ) {
         String username = auth.getName();
         String token = authHeader.replace("Bearer ", "");
         try {
@@ -39,7 +39,7 @@ public class SubscribeController {
         } catch (BusinessException e) {
             return createErrorEmitter(e.getMessage(), false);
         } catch (Exception e) {
-            log.error("创建订阅 SSE 失败, user={}, topic={}", username, topic, e);
+            log.error("Failed to create SSE subscription, user={}, topic={}", username, topic, e);
             return createErrorEmitter("SSE连接失败: " + e.getMessage(), true);
         }
     }
@@ -49,6 +49,35 @@ public class SubscribeController {
         String username = auth.getName();
         subscribeService.unsubscribe(username, topic);
         return ApiResponse.ok("已取消订阅", null);
+    }
+
+    @GetMapping("/session-status")
+    public ApiResponse<Map<String, Object>> sessionStatus(Authentication auth) {
+        return ApiResponse.ok(subscribeService.getSessionStatus(auth.getName()));
+    }
+
+    @PostMapping("/connect")
+    public ApiResponse<Map<String, Object>> connect(
+            @RequestHeader("Authorization") String authHeader,
+            Authentication auth
+    ) {
+        String token = authHeader.replace("Bearer ", "");
+        String username = auth.getName();
+        subscribeService.connectSession(username, token);
+        return ApiResponse.ok("MQTT连接已建立", subscribeService.getSessionStatus(username));
+    }
+
+    @PostMapping("/disconnect")
+    public ApiResponse<Map<String, Object>> disconnect(Authentication auth) {
+        String username = auth.getName();
+        subscribeService.disconnectSession(username);
+        return ApiResponse.ok("MQTT连接已断开", subscribeService.getSessionStatus(username));
+    }
+
+    @PostMapping("/close")
+    public ApiResponse<Void> close(Authentication auth) {
+        subscribeService.closeSession(auth.getName());
+        return ApiResponse.ok("订阅会话已关闭", null);
     }
 
     private SseEmitter createErrorEmitter(String message, boolean reconnectable) {

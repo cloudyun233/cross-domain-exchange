@@ -6,6 +6,7 @@ import { useAuth } from './AuthContext';
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const BASE_RECONNECT_DELAY = 1000;
+const STATUS_POLL_INTERVAL = 5000;
 
 export interface ReceivedMessage {
   topic: string;
@@ -27,17 +28,23 @@ interface SubscribeContextType {
   messages: ReceivedMessage[];
   selectedKey: string[];
   selectedName: string;
+  mqttConnected: boolean;
+  mqttProtocol: string;
+  sseConnected: boolean;
+  subscriptionCount: number;
   setTopic: (topic: string) => void;
   setQos: (qos: number) => void;
   setSelectedKey: (keys: string[]) => void;
   setSelectedName: (name: string) => void;
   startListening: () => Promise<void>;
   stopListening: (options?: StopListeningOptions) => Promise<void>;
+  connectMqtt: () => Promise<void>;
+  disconnectMqtt: () => Promise<void>;
+  refreshSessionStatus: () => Promise<void>;
   clearMessages: () => void;
 }
 
 const SubscribeContext = createContext<SubscribeContextType | undefined>(undefined);
-
 const STORAGE_KEY = 'subscribe_state';
 
 const loadFromStorage = (): { selectedKey?: string[]; selectedName?: string; qos?: number } => {
@@ -62,6 +69,7 @@ const saveToStorage = (state: { selectedKey?: string[]; selectedName?: string; q
 
 export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const saved = loadFromStorage();
+  const { isAuthenticated } = useAuth();
 
   const [topic, setTopic] = useState('');
   const [qos, setQosState] = useState<number>(saved.qos ?? 1);
@@ -70,7 +78,10 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [messages, setMessages] = useState<ReceivedMessage[]>([]);
   const [selectedKey, setSelectedKeyState] = useState<string[]>(saved.selectedKey || []);
   const [selectedName, setSelectedNameState] = useState<string>(saved.selectedName || '');
-  const { isAuthenticated } = useAuth();
+  const [mqttConnected, setMqttConnected] = useState(false);
+  const [mqttProtocol, setMqttProtocol] = useState('未连接');
+  const [sseConnected, setSseConnected] = useState(false);
+  const [subscriptionCount, setSubscriptionCount] = useState(0);
 
   const esRef = useRef<EventSourcePolyfill | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,6 +89,13 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
   const shouldReconnectRef = useRef(false);
   const activeTopicRef = useRef<string | null>(null);
   const activeQosRef = useRef(1);
+
+  const applySessionStatus = (data: any) => {
+    setMqttConnected(Boolean(data?.mqttConnected));
+    setMqttProtocol(data?.protocol || '未连接');
+    setSseConnected(Boolean(data?.sseConnected));
+    setSubscriptionCount(Number(data?.subscriptionCount || 0));
+  };
 
   const clearReconnectTimer = () => {
     if (reconnectTimeoutRef.current) {
@@ -121,12 +139,81 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     }, ...prev].slice(0, 100));
   };
 
-  const handleTerminalError = (errorMessage: string) => {
+  const refreshSessionStatus = async () => {
+    if (!isAuthenticated) {
+      applySessionStatus(null);
+      return;
+    }
+
+    try {
+      const resp = await api.getSubscribeSessionStatus();
+      if (resp.success) {
+        applySessionStatus(resp.data);
+      }
+    } catch {
+      applySessionStatus(null);
+    }
+  };
+
+  const handleTerminalError = async (errorMessage: string) => {
     shouldReconnectRef.current = false;
     clearReconnectTimer();
     closeStream();
     resetListeningState();
+    setSseConnected(false);
+    await refreshSessionStatus();
     message.error(errorMessage);
+  };
+
+  const createStream = (nextTopic: string, nextQos: number) => {
+    closeStream();
+
+    const es = api.createSubscribeStream(nextTopic, nextQos);
+    esRef.current = es;
+
+    es.addEventListener('connected', ((event: any) => {
+      if (event.data) {
+        message.success('订阅连接已建立，等待消息...');
+      }
+      reconnectAttemptsRef.current = 0;
+      setListening(true);
+      setSseConnected(true);
+      void refreshSessionStatus();
+    }) as any);
+
+    es.addEventListener('message', ((event: any) => {
+      try {
+        const data = JSON.parse(event.data);
+        pushMessage(data.payload, data.topic, data.timestamp);
+      } catch (error) {
+        console.error('Failed to parse subscription message', error);
+      }
+    }) as any);
+
+    es.addEventListener('error', ((event: any) => {
+      if (!event.data) {
+        return;
+      }
+
+      try {
+        const errorData = JSON.parse(event.data);
+        if (errorData?.reconnectable === false) {
+          void handleTerminalError(errorData.message || '订阅失败');
+          return;
+        }
+        if (errorData?.message) {
+          message.error(errorData.message);
+        }
+      } catch {
+        // ignore malformed payload
+      }
+    }) as any);
+
+    es.onerror = () => {
+      if (shouldReconnectRef.current) {
+        void handleReconnect();
+      }
+    };
   };
 
   const handleReconnect = async () => {
@@ -159,55 +246,6 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     }, delay);
   };
 
-  const createStream = (nextTopic: string, nextQos: number) => {
-    closeStream();
-
-    const es = api.createSubscribeStream(nextTopic, nextQos);
-    esRef.current = es;
-
-    es.addEventListener('connected', ((event: any) => {
-      if (event.data) {
-        message.success('订阅连接已建立，等待消息...');
-      }
-      reconnectAttemptsRef.current = 0;
-      setListening(true);
-    }) as any);
-
-    es.addEventListener('message', ((event: any) => {
-      try {
-        const data = JSON.parse(event.data);
-        pushMessage(data.payload, data.topic, data.timestamp);
-      } catch (error) {
-        console.error('解析订阅消息失败', error);
-      }
-    }) as any);
-
-    es.addEventListener('error', ((event: any) => {
-      if (!event.data) {
-        return;
-      }
-
-      try {
-        const errorData = JSON.parse(event.data);
-        if (errorData?.reconnectable === false) {
-          handleTerminalError(errorData.message || '订阅失败');
-          return;
-        }
-        if (errorData?.message) {
-          message.error(errorData.message);
-        }
-      } catch {
-        // ignore malformed payload
-      }
-    }) as any);
-
-    es.onerror = () => {
-      if (shouldReconnectRef.current) {
-        void handleReconnect();
-      }
-    };
-  };
-
   const stopListening = async ({ silent = false, cancelRemote = true }: StopListeningOptions = {}) => {
     shouldReconnectRef.current = false;
     clearReconnectTimer();
@@ -215,14 +253,17 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     const currentTopic = activeTopicRef.current;
     resetListeningState();
+    setSseConnected(false);
 
     if (cancelRemote && currentTopic) {
       try {
         await api.cancelSubscribe(currentTopic);
       } catch (error) {
-        console.error('取消订阅失败', error);
+        console.error('Failed to cancel subscription', error);
       }
     }
+
+    await refreshSessionStatus();
 
     if (!silent) {
       message.info('已停止监听');
@@ -246,6 +287,26 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     setActiveTopic(nextTopic);
     setListening(true);
     createStream(nextTopic, qos);
+  };
+
+  const connectMqtt = async () => {
+    const resp = await api.connectSubscribeSession();
+    if (resp.success) {
+      applySessionStatus(resp.data);
+      message.success(resp.message || 'MQTT 已连接');
+    } else {
+      throw new Error(resp.message);
+    }
+  };
+
+  const disconnectMqtt = async () => {
+    const resp = await api.disconnectSubscribeSession();
+    if (resp.success) {
+      applySessionStatus(resp.data);
+      message.info(resp.message || 'MQTT 已断开');
+    } else {
+      throw new Error(resp.message);
+    }
   };
 
   const clearMessages = () => {
@@ -274,7 +335,16 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
         void stopListening({ silent: true, cancelRemote: false });
       }
       clearMessages();
+      applySessionStatus(null);
+      return;
     }
+
+    void refreshSessionStatus();
+    const timer = setInterval(() => {
+      void refreshSessionStatus();
+    }, STATUS_POLL_INTERVAL);
+
+    return () => clearInterval(timer);
   }, [isAuthenticated]);
 
   useEffect(() => () => {
@@ -293,12 +363,19 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
         messages,
         selectedKey,
         selectedName,
+        mqttConnected,
+        mqttProtocol,
+        sseConnected,
+        subscriptionCount,
         setTopic,
         setQos,
         setSelectedKey,
         setSelectedName,
         startListening,
         stopListening,
+        connectMqtt,
+        disconnectMqtt,
+        refreshSessionStatus,
         clearMessages,
       }}
     >

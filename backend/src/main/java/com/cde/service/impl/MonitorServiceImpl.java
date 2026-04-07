@@ -7,12 +7,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
- * 监控服务实现 (论文3.3.4: 实时可视化监控)
- * 定时从EMQX HTTP API采集数据
+ * Monitoring service backed by EMQX management APIs.
  */
 @Slf4j
 @Service
@@ -21,49 +24,41 @@ public class MonitorServiceImpl implements MonitorService {
 
     private final EmqxApiClient emqxApiClient;
 
-    // 缓存最近的监控数据
     private volatile Map<String, Object> cachedStats = new HashMap<>();
+    private volatile Map<String, Object> cachedMetrics = new HashMap<>();
     private volatile Map<String, Object> cachedClients = new HashMap<>();
     private final Deque<Map<String, Object>> trafficHistory = new ConcurrentLinkedDeque<>();
-    
-    // 保存上一次的累计值用于计算增量
+
     private volatile long lastMessagesReceived = 0;
     private volatile long lastMessagesSent = 0;
 
-    /**
-     * 定时采集EMQX指标 (每5秒)
-     */
     @Scheduled(fixedDelayString = "${emqx.monitor.poll-interval-ms:5000}")
     public void pollMetrics() {
         try {
             Map<String, Object> stats = emqxApiClient.fetchStats();
+            Map<String, Object> metrics = emqxApiClient.fetchMetrics();
             Map<String, Object> clients = emqxApiClient.fetchClients();
 
             cachedStats = stats;
+            cachedMetrics = metrics;
             cachedClients = clients;
 
-            // 获取当前累计值
-            long currentMessagesReceived = ((Number) stats.getOrDefault("messages.received", 0)).longValue();
-            long currentMessagesSent = ((Number) stats.getOrDefault("messages.sent", 0)).longValue();
-            
-            // 计算增量（处理首次采集的情况）
-            long deltaReceived = lastMessagesReceived == 0 ? 0 : currentMessagesReceived - lastMessagesReceived;
-            long deltaSent = lastMessagesSent == 0 ? 0 : currentMessagesSent - lastMessagesSent;
-            
-            // 确保增量不为负（处理重启或数据重置的情况
-            deltaReceived = Math.max(0, deltaReceived);
-            deltaSent = Math.max(0, deltaSent);
-            
-            // 更新上一次的值
+            long currentMessagesReceived = numberValue(metrics.get("messages.received"));
+            long currentMessagesSent = numberValue(metrics.get("messages.sent"));
+            long onlineConnections = numberValue(stats.getOrDefault("live_connections.count",
+                    stats.getOrDefault("connections.count", 0)));
+
+            long deltaReceived = lastMessagesReceived == 0 ? 0 : Math.max(0, currentMessagesReceived - lastMessagesReceived);
+            long deltaSent = lastMessagesSent == 0 ? 0 : Math.max(0, currentMessagesSent - lastMessagesSent);
+
             lastMessagesReceived = currentMessagesReceived;
             lastMessagesSent = currentMessagesSent;
 
-            // 记录流量历史 (保留最近60条=5分钟)
             Map<String, Object> snapshot = new HashMap<>();
             snapshot.put("time", System.currentTimeMillis());
             snapshot.put("messagesIn", deltaReceived);
             snapshot.put("messagesOut", deltaSent);
-            snapshot.put("connections", stats.getOrDefault("connections.count", 0));
+            snapshot.put("onlineConnections", onlineConnections);
             snapshot.put("totalMessagesReceived", currentMessagesReceived);
             snapshot.put("totalMessagesSent", currentMessagesSent);
             trafficHistory.addLast(snapshot);
@@ -71,13 +66,18 @@ public class MonitorServiceImpl implements MonitorService {
                 trafficHistory.pollFirst();
             }
         } catch (Exception e) {
-            log.debug("EMQX指标采集失败(Broker可能未启动): {}", e.getMessage());
+            log.debug("Failed to poll EMQX metrics: {}", e.getMessage());
         }
     }
 
     @Override
     public Map<String, Object> getTrafficStats() {
         Map<String, Object> result = new HashMap<>(cachedStats);
+        result.putAll(cachedMetrics);
+        result.put("onlineConnections", cachedStats.getOrDefault("live_connections.count",
+                cachedStats.getOrDefault("connections.count", 0)));
+        result.put("totalMessagesReceived", cachedMetrics.getOrDefault("messages.received", 0));
+        result.put("totalMessagesSent", cachedMetrics.getOrDefault("messages.sent", 0));
         result.put("history", new ArrayList<>(trafficHistory));
         return result;
     }
@@ -106,5 +106,12 @@ public class MonitorServiceImpl implements MonitorService {
         metrics.put("availableProcessors", rt.availableProcessors());
         metrics.put("connectionProtocol", cachedStats.getOrDefault("connectionProtocol", "TCP"));
         return metrics;
+    }
+
+    private long numberValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return 0L;
     }
 }

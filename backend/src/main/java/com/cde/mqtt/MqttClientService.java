@@ -15,7 +15,6 @@ import com.hivemq.client.mqtt.mqtt5.message.auth.Mqtt5SimpleAuth;
 import com.hivemq.client.mqtt.mqtt5.message.connect.connack.Mqtt5ConnAck;
 import com.hivemq.client.mqtt.mqtt5.message.publish.Mqtt5PublishResult;
 import com.hivemq.client.mqtt.mqtt5.message.publish.puback.Mqtt5PubAck;
-import com.hivemq.client.mqtt.mqtt5.message.publish.puback.Mqtt5PubAckReasonCode;
 import com.hivemq.client.mqtt.mqtt5.message.subscribe.suback.Mqtt5SubAck;
 import com.hivemq.client.mqtt.mqtt5.message.subscribe.suback.Mqtt5SubAckReasonCode;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
@@ -74,8 +73,8 @@ public class MqttClientService {
         final Mqtt5AsyncClient client;
         final Map<String, BiConsumer<String, String>> callbacks = new ConcurrentHashMap<>();
         final Map<String, Integer> qosMap = new ConcurrentHashMap<>();
-        volatile boolean connected;
         final Object lock = new Object();
+        volatile boolean connected;
 
         UserMqttContext(Mqtt5AsyncClient client) {
             this.client = client;
@@ -83,11 +82,21 @@ public class MqttClientService {
     }
 
     public void connectForUser(String username, String jwtToken) {
+        connectForUser(username, jwtToken, Map.of(), null);
+    }
+
+    public void connectForUser(
+            String username,
+            String jwtToken,
+            Map<String, Integer> initialSubscriptions,
+            BiConsumer<String, String> callback
+    ) {
         UserMqttContext existingCtx = userContexts.get(username);
         if (existingCtx != null) {
             synchronized (existingCtx.lock) {
+                seedSubscriptions(existingCtx, initialSubscriptions, callback);
                 if (existingCtx.connected && existingCtx.client.getState().isConnected()) {
-                    log.debug("User {} already connected, skip", username);
+                    log.debug("User {} already connected, skip reconnect", username);
                     return;
                 }
             }
@@ -99,34 +108,34 @@ public class MqttClientService {
         try {
             String clientId = resolveClientId(username);
             Mqtt5AsyncClient mqttClient = buildTlsClient(clientId);
+            UserMqttContext ctx = createContext(mqttClient, initialSubscriptions, callback);
             connectClient(mqttClient, username, jwtToken);
-
-            UserMqttContext ctx = new UserMqttContext(mqttClient);
-            synchronized (ctx.lock) {
-                ctx.connected = true;
-            }
-
-            setupPublishCallback(ctx);
+            markConnected(ctx);
             userContexts.put(username, ctx);
-
             log.info("MQTT connected for user {} over TLS: clientId={}, insecureTrustAll={}",
                     username, clientId, insecureTrustAll);
         } catch (TimeoutException e) {
-            log.warn("MQTT TLS connection timeout for user {} after {} seconds, trying TCP", username, connectTimeoutSeconds);
-            if (!tryConnectTcpForUser(username, jwtToken)) {
+            log.warn("MQTT TLS connection timeout for user {} after {} seconds, trying TCP",
+                    username, connectTimeoutSeconds);
+            if (!tryConnectTcpForUser(username, jwtToken, initialSubscriptions, callback)) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "MQTT Broker 连接失败");
             }
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
             log.warn("MQTT TLS connection failed for user {}, trying TCP: {}", username, e.getMessage());
-            if (!tryConnectTcpForUser(username, jwtToken)) {
+            if (!tryConnectTcpForUser(username, jwtToken, initialSubscriptions, callback)) {
                 throw new BusinessException(HttpStatus.BAD_GATEWAY, "MQTT Broker 连接失败");
             }
         }
     }
 
-    private boolean tryConnectTcpForUser(String username, String jwtToken) {
+    private boolean tryConnectTcpForUser(
+            String username,
+            String jwtToken,
+            Map<String, Integer> initialSubscriptions,
+            BiConsumer<String, String> callback
+    ) {
         try {
             String clientId = resolveClientId(username);
             Mqtt5AsyncClient mqttClient = MqttClient.builder()
@@ -137,14 +146,9 @@ public class MqttClientService {
                     .automaticReconnectWithDefaultConfig()
                     .buildAsync();
 
+            UserMqttContext ctx = createContext(mqttClient, initialSubscriptions, callback);
             connectClient(mqttClient, username, jwtToken);
-
-            UserMqttContext ctx = new UserMqttContext(mqttClient);
-            synchronized (ctx.lock) {
-                ctx.connected = true;
-            }
-
-            setupPublishCallback(ctx);
+            markConnected(ctx);
             userContexts.put(username, ctx);
 
             log.info("MQTT connected for user {} over TCP: clientId={}", username, clientId);
@@ -153,6 +157,140 @@ public class MqttClientService {
             log.error("MQTT TCP connection failed for user {}: {}", username, e.getMessage());
             return false;
         }
+    }
+
+    public void subscribeForUser(String username, String topic, int qos, BiConsumer<String, String> callback) {
+        UserMqttContext ctx = requireConnectedContext(username);
+        synchronized (ctx.lock) {
+            sendSubscribe(ctx.client, topic, qos);
+            ctx.callbacks.put(topic, callback);
+            ctx.qosMap.put(topic, qos);
+        }
+        log.info("User {} subscribed to topic {}, qos={}", username, topic, qos);
+    }
+
+    public void unsubscribeForUser(String username, String topic) {
+        UserMqttContext ctx = userContexts.get(username);
+        if (ctx == null) {
+            return;
+        }
+
+        synchronized (ctx.lock) {
+            ctx.callbacks.remove(topic);
+            ctx.qosMap.remove(topic);
+        }
+        log.info("User {} unsubscribed locally from topic {}", username, topic);
+    }
+
+    public void publishForUser(String username, String topic, String payload, int qos) {
+        UserMqttContext ctx = requireConnectedContext(username);
+        synchronized (ctx.lock) {
+            sendPublish(ctx.client, topic, payload, qos);
+        }
+        log.info("User {} published message: topic={}, qos={}", username, topic, qos);
+    }
+
+    public void disconnectForUser(String username) {
+        UserMqttContext ctx = userContexts.remove(username);
+        if (ctx == null || ctx.client == null) {
+            return;
+        }
+
+        synchronized (ctx.lock) {
+            ctx.connected = false;
+            ctx.callbacks.clear();
+            ctx.qosMap.clear();
+        }
+
+        try {
+            ctx.client.toAsync().disconnect().get(disconnectTimeoutSeconds, TimeUnit.SECONDS);
+            log.info("Disconnected MQTT for user {}", username);
+        } catch (Exception e) {
+            log.debug("Ignoring MQTT disconnect error for user {}: {}", username, e.getMessage());
+        }
+    }
+
+    public boolean isUserConnected(String username) {
+        UserMqttContext ctx = userContexts.get(username);
+        if (ctx == null) {
+            return false;
+        }
+        synchronized (ctx.lock) {
+            return ctx.connected && ctx.client.getState().isConnected();
+        }
+    }
+
+    public String getUserProtocol(String username) {
+        UserMqttContext ctx = userContexts.get(username);
+        if (ctx == null) {
+            return "未连接";
+        }
+        synchronized (ctx.lock) {
+            if (!ctx.connected || !ctx.client.getState().isConnected()) {
+                return "未连接";
+            }
+            return resolveProtocol(ctx);
+        }
+    }
+
+    public boolean isConnected() {
+        return userContexts.values().stream().anyMatch(ctx -> ctx.connected && ctx.client.getState().isConnected());
+    }
+
+    public String getActiveProtocol() {
+        for (UserMqttContext ctx : userContexts.values()) {
+            if (ctx.connected && ctx.client.getState().isConnected()) {
+                return resolveProtocol(ctx);
+            }
+        }
+        return "未连接";
+    }
+
+    @PreDestroy
+    public void destroy() {
+        userContexts.keySet().forEach(this::disconnectForUser);
+    }
+
+    private UserMqttContext requireConnectedContext(String username) {
+        UserMqttContext ctx = userContexts.get(username);
+        if (ctx == null) {
+            throw new IllegalStateException("User " + username + " is not connected to MQTT broker");
+        }
+        synchronized (ctx.lock) {
+            if (!ctx.client.getState().isConnected()) {
+                throw new IllegalStateException("User " + username + " is not connected to MQTT broker");
+            }
+            if (!ctx.connected) {
+                log.info("MQTT client auto-reconnected for user {}, updating state", username);
+                ctx.connected = true;
+            }
+            return ctx;
+        }
+    }
+
+    private UserMqttContext createContext(
+            Mqtt5AsyncClient client,
+            Map<String, Integer> initialSubscriptions,
+            BiConsumer<String, String> callback
+    ) {
+        UserMqttContext ctx = new UserMqttContext(client);
+        seedSubscriptions(ctx, initialSubscriptions, callback);
+        setupPublishCallback(ctx);
+        return ctx;
+    }
+
+    private void seedSubscriptions(
+            UserMqttContext ctx,
+            Map<String, Integer> initialSubscriptions,
+            BiConsumer<String, String> callback
+    ) {
+        if (callback == null || initialSubscriptions == null || initialSubscriptions.isEmpty()) {
+            return;
+        }
+        initialSubscriptions.forEach((topic, qos) -> {
+            ctx.callbacks.put(topic, callback);
+            ctx.qosMap.put(topic, qos);
+        });
     }
 
     private void connectClient(Mqtt5AsyncClient client, String username, String jwtToken) throws Exception {
@@ -173,8 +311,7 @@ public class MqttClientService {
     }
 
     private String resolveClientId(String username) {
-        SysUser user = sysUserMapper.selectOne(
-                new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
+        SysUser user = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
         return user != null ? user.getClientId() : username;
     }
 
@@ -203,7 +340,7 @@ public class MqttClientService {
         ctx.client.toAsync().publishes(MqttGlobalPublishFilter.ALL, publish -> {
             String topic = publish.getTopic().toString();
             String payload = new String(publish.getPayloadAsBytes(), StandardCharsets.UTF_8);
-            log.debug("MQTT received publish for user: topic={}, payloadLength={}", topic, payload.length());
+            log.debug("MQTT received publish: topic={}, payloadLength={}", topic, payload.length());
 
             ctx.callbacks.forEach((filter, callback) -> {
                 if (MqttTopicUtil.matchesTopic(filter, topic)) {
@@ -217,83 +354,9 @@ public class MqttClientService {
         });
     }
 
-    public void subscribeForUser(String username, String topic, int qos, BiConsumer<String, String> callback) {
-        UserMqttContext ctx = userContexts.get(username);
-        if (ctx == null) {
-            throw new IllegalStateException("User " + username + " is not connected to MQTT broker");
-        }
-
+    private void markConnected(UserMqttContext ctx) {
         synchronized (ctx.lock) {
-            if (!ctx.client.getState().isConnected()) {
-                throw new IllegalStateException("User " + username + " is not connected to MQTT broker");
-            }
-            if (!ctx.connected) {
-                log.info("MQTT client auto-reconnected for user {}, updating state", username);
-                ctx.connected = true;
-            }
-            sendSubscribe(ctx.client, topic, qos);
-            ctx.callbacks.put(topic, callback);
-            ctx.qosMap.put(topic, qos);
-        }
-        log.info("User {} subscribed to topic {}, qos={}", username, topic, qos);
-    }
-
-    public void unsubscribeForUser(String username, String topic) {
-        UserMqttContext ctx = userContexts.get(username);
-        if (ctx == null) {
-            return;
-        }
-
-        synchronized (ctx.lock) {
-            ctx.callbacks.remove(topic);
-            ctx.qosMap.remove(topic);
-        }
-        log.info("User {} unsubscribed from topic {}", username, topic);
-    }
-
-    public void publishForUser(String username, String topic, String payload, int qos) {
-        UserMqttContext ctx = userContexts.get(username);
-        if (ctx == null) {
-            throw new IllegalStateException("User " + username + " is not connected to MQTT broker");
-        }
-
-        synchronized (ctx.lock) {
-            if (!ctx.client.getState().isConnected()) {
-                throw new IllegalStateException("User " + username + " is not connected to MQTT broker");
-            }
-            if (!ctx.connected) {
-                log.info("MQTT client auto-reconnected for user {}, updating state", username);
-                ctx.connected = true;
-            }
-            sendPublish(ctx.client, topic, payload, qos);
-        }
-        log.info("User {} published message: topic={}, qos={}", username, topic, qos);
-    }
-
-    public void disconnectForUser(String username) {
-        UserMqttContext ctx = userContexts.remove(username);
-        if (ctx != null && ctx.client != null) {
-            synchronized (ctx.lock) {
-                ctx.connected = false;
-                ctx.callbacks.clear();
-                ctx.qosMap.clear();
-            }
-            try {
-                ctx.client.toAsync().disconnect().get(disconnectTimeoutSeconds, TimeUnit.SECONDS);
-                log.info("Disconnected MQTT for user {}", username);
-            } catch (Exception e) {
-                log.debug("Ignoring MQTT disconnect error for user {}: {}", username, e.getMessage());
-            }
-        }
-    }
-
-    public boolean isUserConnected(String username) {
-        UserMqttContext ctx = userContexts.get(username);
-        if (ctx == null) {
-            return false;
-        }
-        synchronized (ctx.lock) {
-            return ctx.connected && ctx.client.getState().isConnected();
+            ctx.connected = true;
         }
     }
 
@@ -301,6 +364,7 @@ public class MqttClientService {
         if (client == null || !client.getState().isConnected()) {
             throw new IllegalStateException("MQTT client not connected");
         }
+
         try {
             CompletableFuture<Mqtt5PublishResult> future = client.toAsync()
                     .publishWith()
@@ -308,7 +372,6 @@ public class MqttClientService {
                     .payload(payload.getBytes(StandardCharsets.UTF_8))
                     .qos(MqttQos.fromCode(qos))
                     .send();
-
             future.get(publishTimeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
             throw mapPublishException(topic, e);
@@ -316,7 +379,7 @@ public class MqttClientService {
     }
 
     private void sendSubscribe(Mqtt5AsyncClient client, String topic, int qos) {
-        if (client == null) {
+        if (client == null || !client.getState().isConnected()) {
             throw new IllegalStateException("MQTT broker is not connected");
         }
 
@@ -326,7 +389,6 @@ public class MqttClientService {
                     .topicFilter(topic)
                     .qos(MqttQos.fromCode(qos))
                     .send();
-
             future.get(subscribeTimeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
             throw mapSubscribeException(topic, e);
@@ -400,21 +462,7 @@ public class MqttClientService {
         return null;
     }
 
-    public boolean isConnected() {
-        return userContexts.values().stream().anyMatch(ctx -> ctx.connected && ctx.client.getState().isConnected());
-    }
-
-    public String getActiveProtocol() {
-        for (UserMqttContext ctx : userContexts.values()) {
-            if (ctx.connected && ctx.client.getState().isConnected()) {
-                return ctx.client.getConfig().getSslConfig().isPresent() ? "TLS" : "TCP";
-            }
-        }
-        return "未连接";
-    }
-
-    @PreDestroy
-    public void destroy() {
-        userContexts.keySet().forEach(this::disconnectForUser);
+    private String resolveProtocol(UserMqttContext ctx) {
+        return ctx.client.getConfig().getSslConfig().isPresent() ? "TLS" : "TCP";
     }
 }

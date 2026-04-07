@@ -64,6 +64,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
+    void api.closeSubscribeSession().catch(() => {
+      // ignore logout cleanup errors
+    });
     setToken(null);
     setUser(null);
     sessionStorage.removeItem('token');

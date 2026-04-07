@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Badge, Card, Col, Row, Space, Statistic, Tag, Typography } from 'antd';
+import { Card, Col, Row, Statistic, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -11,70 +11,57 @@ import { api } from '../services/api';
 
 const { Title } = Typography;
 
+interface DomainTreeNode {
+  key: string;
+  title: string;
+  domainCode?: string;
+  children?: DomainTreeNode[];
+}
+
+const DOMAIN_COLORS = ['#52c41a', '#faad14', '#13c2c2', '#722ed1', '#1677ff'];
+
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState<any>({});
   const [msgStats, setMsgStats] = useState<any>({});
-  const [connStatus, setConnStatus] = useState<any>({});
+  const [domainTree, setDomainTree] = useState<DomainTreeNode[]>([]);
 
-  const fetchData = async () => {
+  const fetchDashboardData = async () => {
     try {
-      const [m, ms, cs, conn] = await Promise.all([
+      const [metricsResp, messageResp] = await Promise.all([
         api.getMetrics(),
         api.getMessageStats(),
-        api.getClientStats(),
-        api.getConnectionStatus(),
       ]);
-      if (m.success) setStats(m.data);
-      if (ms.success) setMsgStats(ms.data);
-      if (cs.success) {
-        // reserved
+
+      if (metricsResp.success) {
+        setStats(metricsResp.data);
       }
-      if (conn.success) setConnStatus(conn.data);
+      if (messageResp.success) {
+        setMsgStats(messageResp.data);
+      }
     } catch {
       // ignore dashboard polling errors
     }
   };
 
+  const fetchDomainTree = async () => {
+    try {
+      const resp = await api.getDomainTree();
+      if (resp.success) {
+        setDomainTree(resp.data);
+      }
+    } catch {
+      // ignore topology errors
+    }
+  };
+
   useEffect(() => {
-    void fetchData();
+    void fetchDashboardData();
+    void fetchDomainTree();
     const timer = setInterval(() => {
-      void fetchData();
+      void fetchDashboardData();
     }, 5000);
     return () => clearInterval(timer);
   }, []);
-
-  const topologyOption = {
-    title: { text: '跨域数据流转拓扑', left: 'center', textStyle: { fontSize: 14 } },
-    tooltip: { trigger: 'item' },
-    series: [{
-      type: 'graph',
-      layout: 'force',
-      roam: true,
-      draggable: true,
-      force: { repulsion: 200, edgeLength: 150 },
-      label: { show: true, fontSize: 11 },
-      edgeLabel: { show: true, formatter: '{c}', fontSize: 10 },
-      categories: [
-        { name: 'Broker', itemStyle: { color: '#1677ff' } },
-        { name: '医疗域', itemStyle: { color: '#52c41a' } },
-        { name: '政务域', itemStyle: { color: '#faad14' } },
-        { name: '管理端', itemStyle: { color: '#722ed1' } },
-      ],
-      data: [
-        { name: 'EMQX Broker', symbolSize: 50, category: 0 },
-        { name: '西南医院\n(producer_medical_swh)', symbolSize: 38, category: 1 },
-        { name: '政务消费端\n(consumer_social)', symbolSize: 36, category: 2 },
-        { name: '院内消费端\n(consumer_medical_swh)', symbolSize: 36, category: 1 },
-        { name: '管理端\n(admin)', symbolSize: 36, category: 3 },
-      ],
-      links: [
-        { source: '西南医院\n(producer_medical_swh)', target: 'EMQX Broker', value: 'PUBLISH', lineStyle: { color: '#52c41a' } },
-        { source: 'EMQX Broker', target: '政务消费端\n(consumer_social)', value: 'SUBSCRIBE', lineStyle: { color: '#faad14' } },
-        { source: 'EMQX Broker', target: '院内消费端\n(consumer_medical_swh)', value: 'SUBSCRIBE', lineStyle: { color: '#13c2c2', type: 'dashed' } },
-        { source: 'EMQX Broker', target: '管理端\n(admin)', value: 'MONITOR', lineStyle: { color: '#722ed1', type: 'dotted' } },
-      ],
-    }],
-  };
 
   const history: any[] = msgStats.history || [];
   const trafficOption = {
@@ -82,71 +69,67 @@ const Dashboard: React.FC = () => {
     tooltip: { trigger: 'axis' },
     xAxis: {
       type: 'category',
-      data: history.map((_: any, i: number) => `${i * 5}s`),
+      data: history.map((item: any) => new Date(item.time).toLocaleTimeString('zh-CN', { hour12: false })),
     },
-    yAxis: { type: 'value', name: '消息/s' },
+    yAxis: { type: 'value', name: '消息 / 5s' },
     legend: { bottom: 0 },
     series: [
       {
         name: '接收',
-        data: history.map((h: any) => h.messagesIn || 0),
+        data: history.map((item: any) => item.messagesIn || 0),
         type: 'line',
         smooth: true,
-        areaStyle: { opacity: 0.2 },
+        areaStyle: { opacity: 0.18 },
         itemStyle: { color: '#1677ff' },
       },
       {
         name: '发送',
-        data: history.map((h: any) => h.messagesOut || 0),
+        data: history.map((item: any) => item.messagesOut || 0),
         type: 'line',
         smooth: true,
-        areaStyle: { opacity: 0.2 },
+        areaStyle: { opacity: 0.18 },
         itemStyle: { color: '#52c41a' },
       },
     ],
   };
 
-  const protocolColor = connStatus.protocol === 'TLS' ? 'green' : connStatus.protocol === 'TCP' ? 'orange' : 'red';
+  const topologyOption = buildTopologyOption(domainTree);
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} align="center">
-        <Title level={4} style={{ margin: 0 }}>监控大盘</Title>
-        <Badge status={connStatus.connected ? 'success' : 'error'} text={connStatus.connected ? '已连接' : '未连接'} />
-        <Tag color={protocolColor}>协议: {connStatus.protocol || '未知'}</Tag>
-      </Space>
+      <Title level={4} style={{ marginTop: 0 }}>监控大盘</Title>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
-          <Card className="stat-card" hoverable>
+          <Card hoverable>
             <Statistic
               title="Broker 连接数"
-              value={msgStats['connections.count'] || 0}
+              value={msgStats.onlineConnections || 0}
               prefix={<CloudServerOutlined style={{ color: '#1677ff' }} />}
               suffix="个"
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card className="stat-card" hoverable>
+          <Card hoverable>
             <Statistic
-              title="消息接收"
-              value={msgStats['messages.received'] || 0}
+              title="消息接收总数"
+              value={msgStats.totalMessagesReceived || 0}
               prefix={<MessageOutlined style={{ color: '#52c41a' }} />}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card className="stat-card" hoverable>
+          <Card hoverable>
             <Statistic
-              title="消息发送"
-              value={msgStats['messages.sent'] || 0}
+              title="消息发送总数"
+              value={msgStats.totalMessagesSent || 0}
               prefix={<CheckCircleOutlined style={{ color: '#faad14' }} />}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card className="stat-card" hoverable>
+          <Card hoverable>
             <Statistic
               title="JVM 内存"
               value={stats.jvmUsedMemory || 0}
@@ -159,14 +142,75 @@ const Dashboard: React.FC = () => {
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={12}>
-          <Card><ReactECharts option={topologyOption} style={{ height: 360 }} /></Card>
+          <Card>
+            <ReactECharts option={topologyOption} style={{ height: 360 }} />
+          </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card><ReactECharts option={trafficOption} style={{ height: 360 }} /></Card>
+          <Card>
+            <ReactECharts option={trafficOption} style={{ height: 360 }} />
+          </Card>
         </Col>
       </Row>
     </div>
   );
 };
+
+function buildTopologyOption(domainTree: DomainTreeNode[]) {
+  const nodes: any[] = [{
+    name: 'EMQX Broker',
+    symbolSize: 52,
+    fixed: true,
+    itemStyle: { color: '#1677ff' },
+    x: 0,
+    y: 0,
+  }];
+  const links: any[] = [];
+
+  const roots = domainTree.length === 1 && domainTree[0]?.children?.length ? domainTree[0].children! : domainTree;
+
+  const walk = (items: DomainTreeNode[], parentName: string, depth: number) => {
+    items.forEach((item) => {
+      const nodeName = item.domainCode ? `${item.title}\n(${item.domainCode})` : item.title;
+      const color = DOMAIN_COLORS[Math.min(depth, DOMAIN_COLORS.length - 1)];
+
+      nodes.push({
+        name: nodeName,
+        symbolSize: Math.max(28, 42 - depth * 2),
+        itemStyle: { color },
+        label: { fontSize: depth > 1 ? 11 : 12 },
+      });
+      links.push({
+        source: parentName,
+        target: nodeName,
+        value: depth === 0 ? 'DOMAIN' : 'CHILD',
+        lineStyle: { color, width: depth === 0 ? 2.4 : 1.6, opacity: 0.82 },
+      });
+
+      if (item.children?.length) {
+        walk(item.children, nodeName, depth + 1);
+      }
+    });
+  };
+
+  walk(roots, 'EMQX Broker', 0);
+
+  return {
+    title: { text: '跨域数据流转拓扑', left: 'center', textStyle: { fontSize: 14 } },
+    tooltip: { trigger: 'item' },
+    series: [{
+      type: 'graph',
+      layout: 'force',
+      roam: true,
+      draggable: true,
+      force: { repulsion: 240, edgeLength: 120, gravity: 0.08 },
+      label: { show: true },
+      edgeLabel: { show: false },
+      data: nodes,
+      links,
+      lineStyle: { curveness: 0.12 },
+    }],
+  };
+}
 
 export default Dashboard;

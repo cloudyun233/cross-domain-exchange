@@ -13,11 +13,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Base64;
 
 /**
  * EMQX HTTP API client.
@@ -143,17 +144,24 @@ public class EmqxApiClient {
         }
     }
 
-    @SuppressWarnings("unchecked")
     public Map<String, Object> fetchStats() {
         try {
-            ResponseEntity<List> response = exchange(baseUrl + "/stats", HttpMethod.GET, null, List.class);
-            if (response.getBody() != null && !response.getBody().isEmpty()) {
-                return (Map<String, Object>) response.getBody().get(0);
-            }
+            ResponseEntity<Object> response = exchange(baseUrl + "/stats?aggregate=true", HttpMethod.GET, null, Object.class);
+            return normalizeMetricBody(response.getBody(), defaultStats());
         } catch (Exception e) {
             log.debug("Failed to fetch EMQX stats: {}", e.getMessage());
         }
         return defaultStats();
+    }
+
+    public Map<String, Object> fetchMetrics() {
+        try {
+            ResponseEntity<Object> response = exchange(baseUrl + "/metrics?aggregate=true", HttpMethod.GET, null, Object.class);
+            return normalizeMetricBody(response.getBody(), defaultMetrics());
+        } catch (Exception e) {
+            log.debug("Failed to fetch EMQX metrics: {}", e.getMessage());
+        }
+        return defaultMetrics();
     }
 
     @SuppressWarnings("unchecked")
@@ -189,7 +197,7 @@ public class EmqxApiClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         String auth = apiKey + ":" + secretKey;
-        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
+        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
         headers.set("Authorization", "Basic " + encodedAuth);
         return headers;
     }
@@ -197,10 +205,27 @@ public class EmqxApiClient {
     private Map<String, Object> defaultStats() {
         Map<String, Object> stats = new HashMap<>();
         stats.put("connections.count", 0);
-        stats.put("messages.received", 0);
-        stats.put("messages.sent", 0);
+        stats.put("live_connections.count", 0);
         stats.put("topics.count", 0);
         stats.put("subscriptions.count", 0);
         return stats;
+    }
+
+    private Map<String, Object> defaultMetrics() {
+        Map<String, Object> metrics = new HashMap<>();
+        metrics.put("messages.received", 0);
+        metrics.put("messages.sent", 0);
+        return metrics;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> normalizeMetricBody(Object body, Map<String, Object> fallback) {
+        if (body instanceof Map<?, ?> mapBody) {
+            return new HashMap<>((Map<String, Object>) mapBody);
+        }
+        if (body instanceof List<?> listBody && !listBody.isEmpty() && listBody.get(0) instanceof Map<?, ?> first) {
+            return new HashMap<>((Map<String, Object>) first);
+        }
+        return fallback;
     }
 }

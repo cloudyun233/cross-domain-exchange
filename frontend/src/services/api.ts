@@ -129,6 +129,10 @@ export const api = {
 
   cancelSubscribe: (topic: string) =>
     request<any>('/subscribe/cancel', { method: 'POST', params: { topic } }),
+  getSubscribeSessionStatus: () => request<any>('/subscribe/session-status'),
+  connectSubscribeSession: () => request<any>('/subscribe/connect', { method: 'POST' }),
+  disconnectSubscribeSession: () => request<any>('/subscribe/disconnect', { method: 'POST' }),
+  closeSubscribeSession: () => request<any>('/subscribe/close', { method: 'POST' }),
 
   getNetworkPresets: () => request<any>('/network/presets'),
   simulateNetwork: (delay: number, loss: number, bandwidth: number) =>
