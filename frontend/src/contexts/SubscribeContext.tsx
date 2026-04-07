@@ -254,18 +254,19 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   const setQos = (newQos: number) => {
     setQosState(newQos);
-    saveToStorage({ selectedKey, selectedName, qos: newQos });
   };
 
   const setSelectedKey = (keys: string[]) => {
     setSelectedKeyState(keys);
-    saveToStorage({ selectedKey: keys, selectedName, qos });
   };
 
   const setSelectedName = (name: string) => {
     setSelectedNameState(name);
-    saveToStorage({ selectedKey, selectedName: name, qos });
   };
+
+  useEffect(() => {
+    saveToStorage({ selectedKey, selectedName, qos });
+  }, [selectedKey, selectedName, qos]);
 
   useEffect(() => {
     if (!isAuthenticated) {
