@@ -116,22 +116,40 @@ export const api = {
     return request<any>('/audit-logs', { params });
   },
 
+  /**
+   * 仅建立 SSE 长连接，不触发 MQTT 操作。
+   * 前端进入订阅页时立即调用，保持直到退出登录。
+   */
+  openSseChannel: (): EventSourcePolyfill => {
+    const token = sessionStorage.getItem('token');
+    const url = `${API_BASE}/subscribe/sse`;
+    return new EventSourcePolyfill(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  /**
+   * 兼容旧流程：SSE + MQTT + 订阅一体（若 SSE 已存在则复用）。
+   */
   createSubscribeStream: (topic: string, qos: number = 1): EventSourcePolyfill => {
     const token = sessionStorage.getItem('token');
     const url = `${API_BASE}/subscribe/stream?topic=${encodeURIComponent(topic)}&qos=${qos}`;
-
     return new EventSourcePolyfill(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     });
   },
 
   cancelSubscribe: (topic: string) =>
     request<any>('/subscribe/cancel', { method: 'POST', params: { topic } }),
+  /** 在已有 MQTT + SSE 的情况下新增订阅主题 */
+  subscribeToTopic: (topic: string, qos: number) =>
+    request<any>('/subscribe/topic', { method: 'POST', params: { topic, qos: String(qos) } }),
   getSubscribeSessionStatus: () => request<any>('/subscribe/session-status'),
+  /** 连接 MQTT（不重建 SSE），cleanStart=false，触发持久会话离线消息补发 */
   connectSubscribeSession: () => request<any>('/subscribe/connect', { method: 'POST' }),
+  /** 仅断开 MQTT，SSE 保持，EMQX 开始缓存离线消息 */
   disconnectSubscribeSession: () => request<any>('/subscribe/disconnect', { method: 'POST' }),
+  /** 完全关闭：MQTT + SSE 全部断开（退出登录时） */
   closeSubscribeSession: () => request<any>('/subscribe/close', { method: 'POST' }),
 
   getNetworkPresets: () => request<any>('/network/presets'),

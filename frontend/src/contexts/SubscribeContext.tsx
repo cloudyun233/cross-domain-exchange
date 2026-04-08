@@ -4,20 +4,17 @@ import { message } from 'antd';
 import { api } from '../services/api';
 import { useAuth } from './AuthContext';
 
-const MAX_RECONNECT_ATTEMPTS = 5;
-const BASE_RECONNECT_DELAY = 1000;
-const STATUS_POLL_INTERVAL = 5000;
+// ─── 常量 ────────────────────────────────────────────────────────────────────
+const SSE_MAX_RECONNECT = 5;
+const SSE_BASE_DELAY_MS = 1500;
+const STATUS_POLL_MS = 5000;
 
+// ─── 类型 ────────────────────────────────────────────────────────────────────
 export interface ReceivedMessage {
   topic: string;
   payload: string;
   timestamp: number;
   meta?: { source_format?: string; converter?: string };
-}
-
-interface StopListeningOptions {
-  silent?: boolean;
-  cancelRemote?: boolean;
 }
 
 interface SubscribeContextType {
@@ -36,37 +33,40 @@ interface SubscribeContextType {
   setQos: (qos: number) => void;
   setSelectedKey: (keys: string[]) => void;
   setSelectedName: (name: string) => void;
+  /**
+   * 开始监听主题：
+   * - 若 MQTT 未连接，先连接再订阅
+   * - 若 MQTT 已连接，直接订阅
+   */
   startListening: () => Promise<void>;
-  stopListening: (options?: StopListeningOptions) => Promise<void>;
+  /** 取消当前主题订阅（保持 SSE 和 MQTT 连接） */
+  stopListening: () => Promise<void>;
+  /** 连接 MQTT（cleanStart=false，EMQX 推送 offline 消息） */
   connectMqtt: () => Promise<void>;
+  /** 仅断开 MQTT，SSE 保持，EMQX 开始缓存离线消息 */
   disconnectMqtt: () => Promise<void>;
   refreshSessionStatus: () => Promise<void>;
   clearMessages: () => void;
 }
 
 const SubscribeContext = createContext<SubscribeContextType | undefined>(undefined);
+
+// ─── 持久化工具 ───────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'subscribe_state';
 
-const loadFromStorage = (): { selectedKey?: string[]; selectedName?: string; qos?: number } => {
+const loadFromStorage = () => {
   try {
-    const saved = sessionStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-  } catch {
-    // ignore parse errors
-  }
+    const s = sessionStorage.getItem(STORAGE_KEY);
+    if (s) return JSON.parse(s) as { selectedKey?: string[]; selectedName?: string; qos?: number };
+  } catch { /* ignore */ }
   return {};
 };
 
 const saveToStorage = (state: { selectedKey?: string[]; selectedName?: string; qos?: number }) => {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // ignore storage errors
-  }
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
 };
 
+// ─── Provider ────────────────────────────────────────────────────────────────
 export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const saved = loadFromStorage();
   const { isAuthenticated } = useAuth();
@@ -83,100 +83,70 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [sseConnected, setSseConnected] = useState(false);
   const [subscriptionCount, setSubscriptionCount] = useState(0);
 
-  const esRef = useRef<EventSourcePolyfill | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const shouldReconnectRef = useRef(false);
+  // ── Refs ──────────────────────────────────────────────────────────────────
+  /** 持久 SSE 长连接（登录期间保持，不随 MQTT 状态变化） */
+  const sseRef = useRef<EventSourcePolyfill | null>(null);
+  const sseReconnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sseReconnAttemptsRef = useRef(0);
+  const shouldSseReconnRef = useRef(false);
+
+  /** 当前活跃主题 ref（避免闭包陷阱） */
   const activeTopicRef = useRef<string | null>(null);
   const activeQosRef = useRef(1);
+  /** 当前 MQTT 连接状态 ref（避免在异步操作中读取过时状态） */
+  const mqttConnectedRef = useRef(false);
+
+  // ── 状态同步工具 ──────────────────────────────────────────────────────────
 
   const applySessionStatus = (data: any) => {
-    setMqttConnected(Boolean(data?.mqttConnected));
+    const connected = Boolean(data?.mqttConnected);
+    mqttConnectedRef.current = connected;
+    setMqttConnected(connected);
     setMqttProtocol(data?.protocol || '未连接');
     setSseConnected(Boolean(data?.sseConnected));
     setSubscriptionCount(Number(data?.subscriptionCount || 0));
   };
 
-  const clearReconnectTimer = () => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-  };
-
-  const closeStream = () => {
-    if (esRef.current) {
-      esRef.current.close();
-      esRef.current = null;
-    }
-  };
-
-  const resetListeningState = () => {
-    activeTopicRef.current = null;
-    setActiveTopic(null);
-    setListening(false);
-  };
-
-  const pushMessage = (rawPayload: string, messageTopic: string, timestamp?: number) => {
-    let payloadText = rawPayload;
-    let meta: ReceivedMessage['meta'];
-
-    try {
-      const parsed = JSON.parse(rawPayload);
-      if (parsed._meta) {
-        meta = parsed._meta;
-        payloadText = JSON.stringify(parsed.data, null, 2);
-      }
-    } catch {
-      // plain text payload
-    }
-
-    setMessages((prev) => [{
-      topic: messageTopic,
-      payload: payloadText,
-      timestamp: timestamp || Date.now(),
-      meta,
-    }, ...prev].slice(0, 100));
-  };
-
   const refreshSessionStatus = async () => {
-    if (!isAuthenticated) {
-      applySessionStatus(null);
-      return;
-    }
-
+    if (!isAuthenticated) { applySessionStatus(null); return; }
     try {
       const resp = await api.getSubscribeSessionStatus();
-      if (resp.success) {
-        applySessionStatus(resp.data);
-      }
-    } catch {
-      applySessionStatus(null);
-    }
+      if (resp.success) applySessionStatus(resp.data);
+    } catch { applySessionStatus(null); }
   };
 
-  const handleTerminalError = async (errorMessage: string) => {
-    shouldReconnectRef.current = false;
-    clearReconnectTimer();
-    closeStream();
-    resetListeningState();
+  const pushMessage = (rawPayload: string, msgTopic: string, timestamp?: number) => {
+    let payloadText = rawPayload;
+    let meta: ReceivedMessage['meta'];
+    try {
+      const parsed = JSON.parse(rawPayload);
+      if (parsed._meta) { meta = parsed._meta; payloadText = JSON.stringify(parsed.data, null, 2); }
+    } catch { /* plain text */ }
+    setMessages((prev) =>
+      [{ topic: msgTopic, payload: payloadText, timestamp: timestamp || Date.now(), meta }, ...prev].slice(0, 100)
+    );
+  };
+
+  // ── SSE 持久长连接 ─────────────────────────────────────────────────────────
+
+  const clearSseReconnTimer = () => {
+    if (sseReconnTimerRef.current) { clearTimeout(sseReconnTimerRef.current); sseReconnTimerRef.current = null; }
+  };
+
+  const closeSse = () => {
+    if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
+    clearSseReconnTimer();
     setSseConnected(false);
-    await refreshSessionStatus();
-    message.error(errorMessage);
   };
 
-  const createStream = (nextTopic: string, nextQos: number) => {
-    closeStream();
-
-    const es = api.createSubscribeStream(nextTopic, nextQos);
-    esRef.current = es;
+  const openSse = () => {
+    closeSse();
+    const es = api.openSseChannel();
+    sseRef.current = es;
 
     es.addEventListener('connected', ((event: any) => {
-      if (event.data) {
-        message.success('订阅连接已建立，等待消息...');
-      }
-      reconnectAttemptsRef.current = 0;
-      setListening(true);
+      if (event.data) console.info('[SSE] channel established');
+      sseReconnAttemptsRef.current = 0;
       setSseConnected(true);
       void refreshSessionStatus();
     }) as any);
@@ -185,198 +155,185 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
       try {
         const data = JSON.parse(event.data);
         pushMessage(data.payload, data.topic, data.timestamp);
-      } catch (error) {
-        console.error('Failed to parse subscription message', error);
-      }
+      } catch (err) { console.error('[SSE] parse error', err); }
     }) as any);
 
     es.addEventListener('error', ((event: any) => {
-      if (!event.data) {
-        return;
-      }
-
+      if (!event.data) return;
       try {
-        const errorData = JSON.parse(event.data);
-        if (errorData?.reconnectable === false) {
-          void handleTerminalError(errorData.message || '订阅失败');
-          return;
-        }
-        if (errorData?.message) {
-          message.error(errorData.message);
-        }
-      } catch {
-        // ignore malformed payload
-      }
+        const d = JSON.parse(event.data);
+        if (d?.message) message.error(d.message);
+      } catch { /* ignore */ }
     }) as any);
 
     es.onerror = () => {
-      if (shouldReconnectRef.current) {
-        void handleReconnect();
-      }
+      setSseConnected(false);
+      if (shouldSseReconnRef.current) void scheduleSseReconn();
     };
   };
 
-  const handleReconnect = async () => {
-    if (!shouldReconnectRef.current) {
+  const scheduleSseReconn = async () => {
+    if (!shouldSseReconnRef.current) return;
+    const attempts = sseReconnAttemptsRef.current;
+    if (attempts >= SSE_MAX_RECONNECT) {
+      shouldSseReconnRef.current = false;
+      message.error('SSE 连接多次中断，请刷新页面重试');
       return;
     }
-
-    const attempts = reconnectAttemptsRef.current;
-    if (attempts >= MAX_RECONNECT_ATTEMPTS) {
-      shouldReconnectRef.current = false;
-      setListening(false);
-      message.error('SSE 重连失败，已达到最大次数，请手动重试');
-      return;
-    }
-
-    const retryTopic = activeTopicRef.current;
-    if (!retryTopic) {
-      shouldReconnectRef.current = false;
-      setListening(false);
-      return;
-    }
-
-    const delay = BASE_RECONNECT_DELAY * Math.pow(2, attempts);
-    message.warning(`SSE 连接中断，${Math.round(delay / 1000)} 秒后尝试重连`);
-
-    clearReconnectTimer();
-    reconnectTimeoutRef.current = setTimeout(() => {
-      reconnectAttemptsRef.current = attempts + 1;
-      createStream(retryTopic, activeQosRef.current);
+    const delay = SSE_BASE_DELAY_MS * Math.pow(2, attempts);
+    console.warn(`[SSE] reconnect in ${delay}ms (attempt ${attempts + 1})`);
+    clearSseReconnTimer();
+    sseReconnTimerRef.current = setTimeout(() => {
+      sseReconnAttemptsRef.current = attempts + 1;
+      openSse();
     }, delay);
   };
 
-  const stopListening = async ({ silent = false, cancelRemote = true }: StopListeningOptions = {}) => {
-    shouldReconnectRef.current = false;
-    clearReconnectTimer();
-    closeStream();
+  // ── 核心操作 ──────────────────────────────────────────────────────────────
 
-    const currentTopic = activeTopicRef.current;
-    resetListeningState();
-    setSseConnected(false);
-
-    if (cancelRemote && currentTopic) {
-      try {
-        await api.cancelSubscribe(currentTopic);
-      } catch (error) {
-        console.error('Failed to cancel subscription', error);
-      }
-    }
-
-    await refreshSessionStatus();
-
-    if (!silent) {
-      message.info('已停止监听');
-    }
-  };
-
+  /**
+   * 开始监听主题。
+   *
+   * 流程：
+   * 1. 确保 SSE 已建立（若无则重建）
+   * 2. 若 MQTT 未连接 → 先调 connectSession（EMQX 推 offline 消息）
+   * 3. 向 EMQX 订阅主题（POST /subscribe/topic）
+   * 4. 更新 UI 状态
+   *
+   * 这样既能收实时消息，重连后也能收到 offline 消息。
+   */
   const startListening = async () => {
     const nextTopic = topic.trim();
-    if (!nextTopic) {
-      message.warning('请选择或输入订阅主题');
-      return;
+    if (!nextTopic) { message.warning('请选择或输入订阅主题'); return; }
+
+    // 1. 确保 SSE 通道存在
+    if (!sseRef.current) {
+      openSse();
+      // 稍等 SSE 握手完成（避免消息丢失）
+      await new Promise((resolve) => setTimeout(resolve, 600));
     }
 
-    if (activeTopicRef.current) {
-      await stopListening({ silent: true });
-    }
+    try {
+      // 2. 若 MQTT 未连接，先连接（会触发 offline 消息补发）
+      if (!mqttConnectedRef.current) {
+        const connectResp = await api.connectSubscribeSession();
+        if (!connectResp.success) throw new Error(connectResp.message);
+        applySessionStatus(connectResp.data);
+      }
 
-    shouldReconnectRef.current = true;
-    activeTopicRef.current = nextTopic;
-    activeQosRef.current = qos;
-    setActiveTopic(nextTopic);
-    setListening(true);
-    createStream(nextTopic, qos);
+      // 3. 订阅主题（向 EMQX 发 SUBSCRIBE 报文）
+      const subResp = await api.subscribeToTopic(nextTopic, qos);
+      if (!subResp.success) throw new Error(subResp.message);
+      applySessionStatus(subResp.data);
+
+      activeTopicRef.current = nextTopic;
+      activeQosRef.current = qos;
+      setActiveTopic(nextTopic);
+      setListening(true);
+      message.success(`已订阅: ${nextTopic}`);
+    } catch (err: any) {
+      message.error(err.message || '订阅失败');
+    }
   };
 
+  /** 停止监听（取消 EMQX 订阅，保持 MQTT 和 SSE 连接） */
+  const stopListening = async () => {
+    const current = activeTopicRef.current;
+    activeTopicRef.current = null;
+    setActiveTopic(null);
+    setListening(false);
+
+    if (current) {
+      try { await api.cancelSubscribe(current); } catch (err) { console.error('[unsubscribe]', err); }
+    }
+    await refreshSessionStatus();
+    message.info('已停止监听');
+  };
+
+  /**
+   * 连接 MQTT（cleanStart=false，持久会话）。
+   * EMQX 将自动补发该 clientId 的所有 offline 消息。
+   * 必须在 SSE 已建立后调用，否则 offline 消息推回时无处接收。
+   */
   const connectMqtt = async () => {
+    if (!sseRef.current || !sseConnected) {
+      message.warning('SSE 未就绪，正在重建 SSE 通道...');
+      openSse();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
     const resp = await api.connectSubscribeSession();
     if (resp.success) {
       applySessionStatus(resp.data);
-      message.success(resp.message || 'MQTT 已连接');
+      message.success(resp.message || 'MQTT 已连接，正在接收离线消息...');
     } else {
       throw new Error(resp.message);
     }
   };
 
+  /** 仅断开 MQTT，SSE 保持长连接，EMQX 开始缓存 offline 消息 */
   const disconnectMqtt = async () => {
     const resp = await api.disconnectSubscribeSession();
     if (resp.success) {
       applySessionStatus(resp.data);
-      message.info(resp.message || 'MQTT 已断开');
+      message.info(resp.message || 'MQTT 已断开（SSE 保持，离线消息将被缓存）');
     } else {
       throw new Error(resp.message);
     }
   };
 
-  const clearMessages = () => {
-    setMessages([]);
-  };
+  // ── 生命周期 ──────────────────────────────────────────────────────────────
 
-  const setQos = (newQos: number) => {
-    setQosState(newQos);
-  };
+  useEffect(() => {
+    if (!isAuthenticated) {
+      // 退出登录：关闭一切
+      shouldSseReconnRef.current = false;
+      closeSse();
+      activeTopicRef.current = null;
+      setActiveTopic(null);
+      setListening(false);
+      setMessages([]);
+      applySessionStatus(null);
+      return;
+    }
 
-  const setSelectedKey = (keys: string[]) => {
-    setSelectedKeyState(keys);
-  };
+    // 登录：建立持久 SSE + 开始轮询状态
+    shouldSseReconnRef.current = true;
+    sseReconnAttemptsRef.current = 0;
+    openSse();
 
-  const setSelectedName = (name: string) => {
-    setSelectedNameState(name);
-  };
+    void refreshSessionStatus();
+    const timer = setInterval(() => void refreshSessionStatus(), STATUS_POLL_MS);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  // 组件卸载清理
+  useEffect(() => () => {
+    shouldSseReconnRef.current = false;
+    closeSse();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     saveToStorage({ selectedKey, selectedName, qos });
   }, [selectedKey, selectedName, qos]);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      if (activeTopicRef.current) {
-        void stopListening({ silent: true, cancelRemote: false });
-      }
-      clearMessages();
-      applySessionStatus(null);
-      return;
-    }
-
-    void refreshSessionStatus();
-    const timer = setInterval(() => {
-      void refreshSessionStatus();
-    }, STATUS_POLL_INTERVAL);
-
-    return () => clearInterval(timer);
-  }, [isAuthenticated]);
-
-  useEffect(() => () => {
-    shouldReconnectRef.current = false;
-    clearReconnectTimer();
-    closeStream();
-  }, []);
+  // ── 辅助 setter ──────────────────────────────────────────────────────────
+  const setQos = (v: number) => setQosState(v);
+  const setSelectedKey = (keys: string[]) => setSelectedKeyState(keys);
+  const setSelectedName = (name: string) => setSelectedNameState(name);
+  const clearMessages = () => setMessages([]);
 
   return (
     <SubscribeContext.Provider
       value={{
-        topic,
-        qos,
-        listening,
-        activeTopic,
-        messages,
-        selectedKey,
-        selectedName,
-        mqttConnected,
-        mqttProtocol,
-        sseConnected,
-        subscriptionCount,
-        setTopic,
-        setQos,
-        setSelectedKey,
-        setSelectedName,
-        startListening,
-        stopListening,
-        connectMqtt,
-        disconnectMqtt,
-        refreshSessionStatus,
-        clearMessages,
+        topic, qos, listening, activeTopic, messages,
+        selectedKey, selectedName,
+        mqttConnected, mqttProtocol, sseConnected, subscriptionCount,
+        setTopic, setQos, setSelectedKey, setSelectedName,
+        startListening, stopListening,
+        connectMqtt, disconnectMqtt,
+        refreshSessionStatus, clearMessages,
       }}
     >
       {children}
@@ -385,9 +342,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
 };
 
 export const useSubscribe = () => {
-  const context = useContext(SubscribeContext);
-  if (!context) {
-    throw new Error('useSubscribe must be used within SubscribeProvider');
-  }
-  return context;
+  const ctx = useContext(SubscribeContext);
+  if (!ctx) throw new Error('useSubscribe must be used within SubscribeProvider');
+  return ctx;
 };
