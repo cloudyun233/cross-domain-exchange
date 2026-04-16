@@ -3,7 +3,9 @@ package com.cde.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cde.dto.DomainTreeNode;
 import com.cde.entity.SysDomain;
+import com.cde.exception.BusinessException;
 import com.cde.mapper.SysDomainMapper;
+import com.cde.mapper.SysUserMapper;
 import com.cde.service.DomainService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,7 @@ import java.util.stream.Collectors;
 public class DomainServiceImpl implements DomainService {
 
     private final SysDomainMapper domainMapper;
+    private final SysUserMapper userMapper;
 
     @Override
     public List<SysDomain> listAll() {
@@ -117,6 +120,14 @@ public class DomainServiceImpl implements DomainService {
 
     @Override
     public void delete(Long id) {
+        int childCount = domainMapper.countByParentId(id);
+        if (childCount > 0) {
+            throw new BusinessException("该安全域下存在子域，无法删除");
+        }
+        int userCount = userMapper.countByDomainId(id);
+        if (userCount > 0) {
+            throw new BusinessException("该安全域下存在用户，无法删除");
+        }
         domainMapper.deleteById(id);
     }
 }

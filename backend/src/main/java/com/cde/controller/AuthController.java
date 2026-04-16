@@ -18,23 +18,15 @@ public class AuthController {
 
     @PostMapping("/login")
     public ApiResponse<LoginResponse> login(@RequestBody LoginRequest request) {
-        try {
-            LoginResponse response = authService.login(request);
-            return ApiResponse.ok("登录成功", response);
-        } catch (Exception e) {
-            return ApiResponse.fail(e.getMessage());
-        }
+        LoginResponse response = authService.login(request);
+        return ApiResponse.ok("登录成功", response);
     }
 
     @PostMapping("/refresh")
     public ApiResponse<LoginResponse> refresh(@RequestHeader("Authorization") String authHeader) {
-        try {
-            String token = authHeader.replace("Bearer ", "");
-            LoginResponse response = authService.refreshToken(token);
-            return ApiResponse.ok("令牌刷新成功", response);
-        } catch (Exception e) {
-            return ApiResponse.fail(e.getMessage());
-        }
+        String token = authHeader.replace("Bearer ", "");
+        LoginResponse response = authService.refreshToken(token);
+        return ApiResponse.ok("令牌刷新成功", response);
     }
 
     @GetMapping("/me")

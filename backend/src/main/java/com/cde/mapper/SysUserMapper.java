@@ -12,4 +12,7 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             "LEFT JOIN sys_domain d ON u.domain_id = d.id " +
             "WHERE u.client_id = #{clientId}")
     SysUser selectByClientIdWithDomain(String clientId);
+
+    @Select("SELECT COUNT(*) FROM sys_user WHERE domain_id = #{domainId}")
+    int countByDomainId(Long domainId);
 }
