@@ -7,5 +7,5 @@ package com.cde.service.converter;
 public interface DataConverter {
     boolean supports(String formatType);
     String convertToJson(Object rawData);
-    Object convertFromJson(String json, String targetFormat);
+    Object convertFromJson(String json, String targetFormat);//用于后续扩展
 }
