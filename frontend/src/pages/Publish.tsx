@@ -65,7 +65,11 @@ const Publish: React.FC = () => {
     try {
       const res = await api.publish(selectedTopic, payload, qos, format, retain);
       if (res.success) {
-        message.success('消息发布成功');
+        if (qos === 0) {
+          message.warning('消息已发送，QoS 0 无确认回执，无法确认是否送达');
+        } else {
+          message.success('消息发布成功');
+        }
         addHistory({ topic: selectedTopic, qos, format, time: new Date().toLocaleString(), success: true });
       } else {
         message.error(res.message || '发布失败');

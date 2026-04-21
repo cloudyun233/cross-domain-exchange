@@ -406,15 +406,26 @@ public class MqttClientService {
         Mqtt5PubAckException pubAckException = findCause(e, Mqtt5PubAckException.class);
         if (pubAckException != null) {
             Mqtt5PubAck ack = pubAckException.getMqttMessage();
+            String reasonString = ack.getReasonString().map(Object::toString).orElse("").toLowerCase();
+
             return switch (ack.getReasonCode()) {
                 case NOT_AUTHORIZED -> new BusinessException(HttpStatus.FORBIDDEN, "无权发布该主题");
                 case TOPIC_NAME_INVALID -> new BusinessException(HttpStatus.BAD_REQUEST, "发布主题不合法: " + topic);
                 case PAYLOAD_FORMAT_INVALID -> new BusinessException(HttpStatus.BAD_REQUEST, "消息格式不合法");
-                default -> new BusinessException(HttpStatus.BAD_REQUEST, "消息发布失败: " + describePublishReason(ack));
+                default -> {
+                    if (reasonString.contains("not authorized") || reasonString.contains("unauthorized") || reasonString.contains("acl")) {
+                        yield new BusinessException(HttpStatus.FORBIDDEN, "无权发布该主题");
+                    }
+                    yield new BusinessException(HttpStatus.BAD_REQUEST, "消息发布失败: " + describePublishReason(ack));
+                }
             };
         }
 
         Throwable root = unwrap(e);
+        String msg = root.getMessage() != null ? root.getMessage().toLowerCase() : "";
+        if (msg.contains("not authorized") || msg.contains("unauthorized") || msg.contains("acl")) {
+            return new BusinessException(HttpStatus.FORBIDDEN, "无权发布该主题");
+        }
         return new BusinessException(HttpStatus.BAD_GATEWAY, "消息发布失败: " + root.getMessage());
     }
 

@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * EMQX Webhook事件接收 (统一审计入口)
  * 接收: client.connected, client.disconnected, message.publish,
- *       client.authorize, client.subscribe, message.delivered
+ *       client.authorize, session.subscribed, message.delivered
  */
 @Slf4j
 @RestController

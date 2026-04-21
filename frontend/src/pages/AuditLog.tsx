@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, Table, Tag, Typography, Space, Select, Button, Input } from 'antd';
 import { ReloadOutlined, WarningOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
@@ -11,7 +11,6 @@ const AuditLog: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ clientId: '', actionType: '' });
-  const timerRef = useRef<any>(null);
 
   const fetchLogs = async (p = page) => {
     setLoading(true);
@@ -26,30 +25,28 @@ const AuditLog: React.FC = () => {
 
   useEffect(() => { fetchLogs(); }, [page]);
 
-  // 自动刷新
-  useEffect(() => {
-    timerRef.current = setInterval(() => fetchLogs(1), 5000);
-    return () => clearInterval(timerRef.current);
-  }, [filters]);
-
   const actionTypeColors: Record<string, string> = {
     connect: 'green', disconnect: 'default',
-    publish: 'blue', subscribe: 'cyan',
+    publish: 'blue', publish_fail: 'red',
+    subscribe: 'cyan', unsubscribe: 'default',
     acl_deny: 'red', acl_allow: 'green',
-    auth_success: 'green', auth_fail: 'red',
-    deliver: 'purple', publish_fail: 'red',
+    deliver: 'purple',
+    mqtt_connect: 'green', mqtt_disconnect: 'default',
+    subscribe_close: 'default',
   };
 
   const actionTypeLabels: Record<string, string> = {
     connect: '客户端连接', disconnect: '客户端断开',
-    publish: '消息发布', subscribe: '主题订阅',
+    publish: '消息发布', publish_fail: '发布失败',
+    subscribe: '主题订阅', unsubscribe: '取消订阅',
     acl_deny: '权限拒绝', acl_allow: 'ACL通过',
-    auth_success: '认证成功', auth_fail: '认证失败',
-    deliver: '消息投递', publish_fail: '发布失败',
+    deliver: '消息投递',
+    mqtt_connect: '连接MQTT', mqtt_disconnect: '断开MQTT',
+    subscribe_close: '关闭会话',
   };
 
   const isDanger = (action: string) =>
-    ['acl_deny', 'auth_fail', 'publish_fail'].includes(action);
+    ['acl_deny', 'publish_fail'].includes(action);
 
   const columns = [
     { title: '时间', dataIndex: 'actionTime', width: 170,

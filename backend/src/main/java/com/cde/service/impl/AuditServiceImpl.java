@@ -44,7 +44,7 @@ public class AuditServiceImpl implements AuditService {
     /**
      * 从EMQX Webhook记录审计事件
      * 支持事件: client.connected, client.disconnected, message.publish,
-     *           client.authorize, client.subscribe, message.delivered
+     *           client.authorize, session.subscribed, message.delivered
      */
     @Override
     public void recordFromWebhook(Map<String, Object> event) {
@@ -91,19 +91,21 @@ public class AuditServiceImpl implements AuditService {
                             event.getOrDefault("topic", ""));
                 }
                 break;
-            case "client.subscribe":
+            case "session.subscribed":
                 actionType = "subscribe";
-                detail = String.format("订阅主题, topic=%s",
-                        event.getOrDefault("topic", ""));
+                detail = String.format("订阅主题 %s, QoS=%s",
+                        event.getOrDefault("topic", ""),
+                        event.getOrDefault("qos", "0"));
                 break;
             case "message.delivered":
                 actionType = "deliver";
-                detail = String.format("消息投递成功, topic=%s",
-                        event.getOrDefault("topic", ""));
+                detail = String.format("消息投递成功, 主题=%s, QoS=%s",
+                        event.getOrDefault("topic", ""),
+                        event.getOrDefault("qos", "0"));
                 break;
             default:
-                actionType = eventType;
-                detail = event.toString();
+                log.warn("[审计] 收到未识别的Webhook事件: {}, 已忽略", eventType);
+                return;
         }
 
         log(clientId, actionType, detail, ipAddress);
