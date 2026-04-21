@@ -110,6 +110,13 @@ docker-compose up -d --build
 # 访问地址
 # - 前端管理控制台：http://localhost:80
 # - EMQX Dashboard：http://localhost:18083
+#
+# 默认账号信息：
+# - EMQX Dashboard: admin / admin123
+#
+# EMQX API 认证信息（用于后端连接）：
+# - API Key: c7ad44cbad762a5d
+# - Secret Key: DWNy1WHuNZh9BdxKBCCRfMBZktzawB4T5bFPUC3h8UHL
 ```
 
 > **说明：** 编译产物需手动放置到 `dockerrun` 目录，目录结构如下：
@@ -136,19 +143,25 @@ cd dockerrun
 docker-compose up -d emqx
 ```
 
-#### 2. 启动后端
+#### 2. 编译并启动后端
 
 ```bash
 cd backend
-./mvnw.cmd spring-boot:run
+# 编译打包
+./mvnw.cmd clean package -DskipTests
+# 启动打包后的 jar 文件
+java -jar target/cross-domain-exchange-1.0.0.jar
 ```
 
-#### 3. 启动前端
+#### 3. 编译并启动前端
 
 ```bash
 cd frontend
+# 安装依赖并编译打包
 npm install
-npm run dev
+npm run build
+# 使用 npx serve 启动打包后的 dist 目录
+npx serve dist -p 5173
 ```
 
 ### 数据库初始化

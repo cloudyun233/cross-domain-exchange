@@ -85,6 +85,10 @@ dist-ssr/
 *.local
 
 
+# EMQX
+dockerrun/emqx/data/
+dockerrun/emqx/log/
+
 # Environment variables
 .env
 .env.local

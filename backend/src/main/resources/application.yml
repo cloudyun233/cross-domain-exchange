@@ -78,7 +78,7 @@ emqx:
   api:
     base-url: http://localhost:18083/api/v5
     api-key: c7ad44cbad762a5d
-    secret-key: C7C4Eb4yfls9C7Xvtgyql9Ca0liuDXxyccuKPDJJsL4LB
+    secret-key: DWNy1WHuNZh9BdxKBCCRfMBZktzawB4T5bFPUC3h8UHL
   monitor:
     poll-interval-ms: 5000
 
