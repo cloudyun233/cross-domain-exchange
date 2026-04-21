@@ -14,7 +14,7 @@ RUN apt-get update \
 
 # 复制本地编译好的 jar 文件和静态资源
 COPY target/*.jar /app/app.jar
-COPY src/main/resources/static /opt/static 2>/dev/null || true
+RUN cp -r src/main/resources/static /opt/static 2>/dev/null || true
 
 ENV TZ=Asia/Shanghai
 ENV LD_LIBRARY_PATH=/opt/nanosdk/lib

@@ -94,16 +94,34 @@
 - Node.js 18+ (前端本地开发)
 - Java 17+ (后端本地开发)
 
-### 方式一：Docker Compose 一键部署
+### 方式一：本地预编译 + Docker 启动
+
+由于国内网络拉取 Maven/前端依赖速度极慢，系统采用**预编译模式**：先在本地完成构建，再通过 Docker 启动已编译好的服务。
 
 ```bash
-# 启动全部服务（EMQX + 后端 + 前端）
-docker-compose up -d
+# 1. 进入项目根目录
+cd cross-domain-exchange
+
+# 2. 编译后端（生成 target/*.jar）
+cd backend
+.\mvnw.cmd package -DskipTests
+cd ..
+
+# 3. 编译前端（生成 dist/）
+cd frontend
+npm install
+npm run build
+cd ..
+
+# 4. 启动全部服务（EMQX + 后端 + 前端）
+docker-compose up -d --build
 
 # 访问地址
 # - 前端管理控制台：http://localhost:80
 # - EMQX Dashboard：http://localhost:18083
 ```
+
+> **说明：** 步骤 2、3 只需执行一次（代码未变时），后续部署只需运行步骤 4，Docker 会自动使用本地已编译的 target/*.jar 和 dist/ 重新打包。
 
 ### 方式二：本地开发模式
 
@@ -256,7 +274,7 @@ cross-domain-exchange/
 | JSON Schema 校验                   | ❌ 未实现 | 数据格式转换后未进行 Schema 校验                                                                                                                                                                                                |
 | 安全域树形管理（多级域自关联）                  | ✅ 已实现 | [SysDomain.java](backend/src/main/java/com/cde/entity/SysDomain.java) parentId 自关联；[DomainController.java](backend/src/main/java/com/cde/controller/DomainController.java) 支持 CRUD                                  |
 | 用户/角色管理（role\_type + client\_id） | ✅ 已实现 | [ClientController.java](backend/src/main/java/com/cde/controller/ClientController.java) 用户 CRUD；[SysUser.java](backend/src/main/java/com/cde/entity/SysUser.java) 字段完整                                              |
-| 容器化一键部署（Docker Compose）          | ✅ 已实现 | [docker-compose.yml](docker-compose.yml) 编排 EMQX+Backend+Frontend                                                                                                                                                   |
+| 容器化部署（本地预编译 + Docker 启动）      | ✅ 已实现 | [docker-compose.yml](docker-compose.yml) 编排 EMQX+Backend+Frontend；国内网络需本地预编译后启动 |
 | 弱网模拟预设（Linux tc 工具，5 种场景）        | ✅ 已实现 | [NetworkController.java](backend/src/main/java/com/cde/controller/NetworkController.java) 支持无限制/标准/政务波动/普通弱网/极端弱网                                                                                                   |
 | 数据库双模兼容（H2 开发/MySQL 生产）          | ✅ 已实现 | [application.yml](backend/src/main/resources/application.yml) H2 (MODE=MySQL)；[application-mysql.yml](backend/src/main/resources/application-mysql.yml) MySQL 8.0                                                   |
 | EMQX 集群高可用                       | ❌ 未实现 | 非企业级仅支持单节点 EMQX                                                                                                                                                                                                     |
