@@ -23,14 +23,14 @@ public class TopicServiceImpl implements TopicService {
     private final DomainService domainService;
 
     @Override
-    public void publishMsg(String topic, String payload, int qos, String username, String token) {
+    public void publishMsg(String topic, String payload, int qos, boolean retain, String username, String token) {
         try {
             mqttClientService.connectForUser(username, token);
-            mqttClientService.publishForUser(username, topic, payload, qos);
+            mqttClientService.publishForUser(username, topic, payload, qos, retain);
             auditService.log(username, "publish",
-                    String.format("发布消息到主题 %s, QoS=%d, 内容长度=%d", topic, qos, payload.length()),
+                    String.format("发布消息到主题 %s, QoS=%d, Retain=%b, 内容长度=%d", topic, qos, retain, payload.length()),
                     "backend");
-            log.info("消息发布成功: topic={}, qos={}, user={}", topic, qos, username);
+            log.info("消息发布成功: topic={}, qos={}, retain={}, user={}", topic, qos, retain, username);
         } catch (BusinessException e) {
             auditService.log(username, "publish_fail",
                     String.format("发布失败: topic=%s, 原因=%s", topic, e.getMessage()),

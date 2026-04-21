@@ -37,6 +37,7 @@ public class TopicController {
             @RequestParam String topic,
             @RequestBody String payload,
             @RequestParam(defaultValue = "1") int qos,
+            @RequestParam(defaultValue = "false") boolean retain,
             @RequestParam(defaultValue = "structured") String format,
             @RequestHeader("Authorization") String authHeader,
             Authentication auth
@@ -46,7 +47,7 @@ public class TopicController {
         String actualFormat = resolveActualFormat(format, payload);
         String convertedPayload = convertPayload(payload, actualFormat);
 
-        topicService.publishMsg(topic, convertedPayload, qos, username, token);
+        topicService.publishMsg(topic, convertedPayload, qos, retain, username, token);
         return ApiResponse.ok("消息发布成功", null);
     }
 

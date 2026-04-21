@@ -109,7 +109,7 @@ public class MqttClientService {
             String clientId = resolveClientId(username);
             Mqtt5AsyncClient mqttClient = buildTlsClient(clientId);
             UserMqttContext ctx = createContext(mqttClient, initialSubscriptions, callback);
-            connectClient(mqttClient, username, jwtToken);
+            connectClient(mqttClient, username, jwtToken, clientId);
             markConnected(ctx);
             userContexts.put(username, ctx);
             log.info("MQTT connected for user {} over TLS: clientId={}, insecureTrustAll={}",
@@ -147,7 +147,7 @@ public class MqttClientService {
                     .buildAsync();
 
             UserMqttContext ctx = createContext(mqttClient, initialSubscriptions, callback);
-            connectClient(mqttClient, username, jwtToken);
+            connectClient(mqttClient, username, jwtToken, clientId);
             markConnected(ctx);
             userContexts.put(username, ctx);
 
@@ -182,12 +182,12 @@ public class MqttClientService {
         log.info("User {} unsubscribed locally from topic {}", username, topic);
     }
 
-    public void publishForUser(String username, String topic, String payload, int qos) {
+    public void publishForUser(String username, String topic, String payload, int qos, boolean retain) {
         UserMqttContext ctx = requireConnectedContext(username);
         synchronized (ctx.lock) {
-            sendPublish(ctx.client, topic, payload, qos);
+            sendPublish(ctx.client, topic, payload, qos, retain);
         }
-        log.info("User {} published message: topic={}, qos={}", username, topic, qos);
+        log.info("User {} published message: topic={}, qos={}, retain={}", username, topic, qos, retain);
     }
 
     public void disconnectForUser(String username) {
@@ -293,7 +293,7 @@ public class MqttClientService {
         });
     }
 
-    private void connectClient(Mqtt5AsyncClient client, String username, String jwtToken) throws Exception {
+    private void connectClient(Mqtt5AsyncClient client, String username, String jwtToken, String clientId) throws Exception {
         Mqtt5SimpleAuth simpleAuth = Mqtt5SimpleAuth.builder()
                 .username(username)
                 .password(jwtToken.getBytes(StandardCharsets.UTF_8))
@@ -305,6 +305,12 @@ public class MqttClientService {
                 .cleanStart(false)
                 .sessionExpiryInterval(3600)
                 .keepAlive(60)
+                .willPublish()
+                    .topic("will/" + clientId)
+                    .payload(("{\"clientId\":\"" + clientId + "\",\"status\":\"offline\"}").getBytes(StandardCharsets.UTF_8))
+                    .qos(MqttQos.AT_LEAST_ONCE)
+                    .retain(true)
+                    .applyWillPublish()
                 .send();
 
         connectFuture.get(connectTimeoutSeconds, TimeUnit.SECONDS);
@@ -360,7 +366,7 @@ public class MqttClientService {
         }
     }
 
-    private void sendPublish(Mqtt5AsyncClient client, String topic, String payload, int qos) {
+    private void sendPublish(Mqtt5AsyncClient client, String topic, String payload, int qos, boolean retain) {
         if (client == null || !client.getState().isConnected()) {
             throw new IllegalStateException("MQTT client not connected");
         }
@@ -371,6 +377,7 @@ public class MqttClientService {
                     .topic(topic)
                     .payload(payload.getBytes(StandardCharsets.UTF_8))
                     .qos(MqttQos.fromCode(qos))
+                    .retain(retain)
                     .send();
             future.get(publishTimeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {

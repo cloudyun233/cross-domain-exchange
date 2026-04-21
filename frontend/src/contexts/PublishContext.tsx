@@ -24,12 +24,14 @@ interface PublishContextType {
   selectedTopic: string;
   selectedNode: DomainTreeNode | null;
   qos: number;
+  retain: boolean;
   format: 'structured' | 'text';
   payload: string;
   history: PublishHistoryItem[];
   setSelectedTopic: (topic: string) => void;
   setSelectedNode: (node: DomainTreeNode | null) => void;
   setQos: (qos: number) => void;
+  setRetain: (retain: boolean) => void;
   setFormat: (format: 'structured' | 'text') => void;
   setPayload: (payload: string) => void;
   addHistory: (item: PublishHistoryItem) => void;
@@ -75,6 +77,7 @@ export const PublishProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [selectedTopic, setSelectedTopic] = useState<string>(saved.selectedTopic || '');
   const [selectedNode, setSelectedNode] = useState<DomainTreeNode | null>(saved.selectedNode || null);
   const [qos, setQos] = useState<number>(saved.qos ?? 1);
+  const [retain, setRetainState] = useState<boolean>(saved.retain ?? true);
   const [format, setFormatState] = useState<'structured' | 'text'>(saved.format || 'structured');
   const [payload, setPayloadState] = useState<string>(saved.payload || STRUCTURED_SAMPLE);
   const [history, setHistory] = useState<PublishHistoryItem[]>(saved.history || []);
@@ -97,6 +100,11 @@ export const PublishProvider: React.FC<{ children: ReactNode }> = ({ children })
   const handleSetQos = (newQos: number) => {
     setQos(newQos);
     persistState({ qos: newQos });
+  };
+
+  const handleSetRetain = (newRetain: boolean) => {
+    setRetainState(newRetain);
+    persistState({ retain: newRetain });
   };
 
   const handleSetFormat = (newFormat: 'structured' | 'text') => {
@@ -130,12 +138,14 @@ export const PublishProvider: React.FC<{ children: ReactNode }> = ({ children })
         selectedTopic,
         selectedNode,
         qos,
+        retain,
         format,
         payload,
         history,
         setSelectedTopic: handleSetSelectedTopic,
         setSelectedNode: handleSetSelectedNode,
         setQos: handleSetQos,
+        setRetain: handleSetRetain,
         setFormat: handleSetFormat,
         setPayload: handleSetPayload,
         addHistory,

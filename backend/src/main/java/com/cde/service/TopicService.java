@@ -10,7 +10,7 @@ import java.util.List;
 public interface TopicService {
 
     /** 发布消息到 MQTT Broker */
-    void publishMsg(String topic, String payload, int qos, String username, String token);
+    void publishMsg(String topic, String payload, int qos, boolean retain, String username, String token);
 
     /** 构建安全域主题树 */
     List<DomainTreeNode> buildDomainTopicTree();

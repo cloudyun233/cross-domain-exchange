@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Card, Col, Input, Radio, Row, Space, Tag, Tree, Typography, message } from 'antd';
+import { Alert, Button, Card, Col, Input, Radio, Row, Space, Tag, Tree, Typography, message, Checkbox } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
 import { usePublish, PublishHistoryItem } from '../contexts/PublishContext';
@@ -30,12 +30,14 @@ const Publish: React.FC = () => {
     selectedTopic,
     selectedNode,
     qos,
+    retain,
     format,
     payload,
     history,
     setSelectedTopic,
     setSelectedNode,
     setQos,
+    setRetain,
     setFormat,
     setPayload,
     addHistory,
@@ -61,7 +63,7 @@ const Publish: React.FC = () => {
 
     setPublishing(true);
     try {
-      const res = await api.publish(selectedTopic, payload, qos, format);
+      const res = await api.publish(selectedTopic, payload, qos, format, retain);
       if (res.success) {
         message.success('消息发布成功');
         addHistory({ topic: selectedTopic, qos, format, time: new Date().toLocaleString(), success: true });
@@ -143,6 +145,17 @@ const Publish: React.FC = () => {
                   <Radio.Button value="structured">结构化</Radio.Button>
                   <Radio.Button value="text">文本</Radio.Button>
                 </Radio.Group>
+              </div>
+
+              <div>
+                <Text strong>保留消息：</Text>
+                <Checkbox 
+                  checked={retain} 
+                  onChange={(e) => setRetain(e.target.checked)} 
+                  style={{ marginLeft: 8 }}
+                >
+                  Retain
+                </Checkbox>
               </div>
 
               <Text type="secondary">

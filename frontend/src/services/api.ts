@@ -96,11 +96,11 @@ export const api = {
   syncAcl: () => request<any>('/acl-rules/sync', { method: 'POST' }),
 
   getTopicTree: () => request<any>('/topics/tree'),
-  publish: (topic: string, payload: string, qos: number, format: string = 'structured') =>
+  publish: (topic: string, payload: string, qos: number, format: string = 'structured', retain: boolean = false) =>
     request<any>('/topics/publish', {
       method: 'POST',
       body: payload,
-      params: { topic, qos: String(qos), format },
+      params: { topic, qos: String(qos), format, retain: String(retain) },
     }),
 
   getMetrics: () => request<any>('/monitor/metrics'),
