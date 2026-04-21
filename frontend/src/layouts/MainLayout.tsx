@@ -72,10 +72,14 @@ const MainLayout: React.FC = () => {
         trigger={null}
         collapsible
         collapsed={collapsed}
-        theme="dark"
+        theme="light"
+        width={240}
         style={{
-          background: 'linear-gradient(180deg, #0f2742 0%, #143a5c 100%)',
-          boxShadow: '2px 0 8px rgba(0,0,0,0.15)',
+          background: 'rgba(255, 255, 255, 0.7)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderRight: '1px solid rgba(0,0,0,0.05)',
+          zIndex: 10,
         }}
       >
         <div
@@ -84,23 +88,23 @@ const MainLayout: React.FC = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            borderBottom: '1px solid rgba(0,0,0,0.04)',
           }}
         >
-          <SettingOutlined style={{ fontSize: 24, color: '#7dd3fc' }} />
+          <SettingOutlined style={{ fontSize: 24, color: '#007AFF' }} />
           {!collapsed && (
-            <Text strong style={{ color: '#fff', marginLeft: 10, fontSize: 14, whiteSpace: 'nowrap' }}>
+            <Text strong style={{ color: '#1D1D1F', marginLeft: 10, fontSize: 16, whiteSpace: 'nowrap', fontWeight: 600, letterSpacing: '-0.3px' }}>
               跨域数据交换系统
             </Text>
           )}
         </div>
         <Menu
-          theme="dark"
+          theme="light"
           mode="inline"
           selectedKeys={[location.pathname]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
-          style={{ borderRight: 0, background: 'transparent' }}
+          style={{ borderRight: 0, background: 'transparent', padding: '12px 8px' }}
         />
       </Sider>
 
@@ -108,11 +112,13 @@ const MainLayout: React.FC = () => {
         <Header
           style={{
             padding: '0 24px',
-            background: '#fff',
+            background: 'rgba(255, 255, 255, 0.8)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+            borderBottom: '1px solid rgba(0,0,0,0.05)',
             zIndex: 1,
           }}
         >
@@ -135,9 +141,9 @@ const MainLayout: React.FC = () => {
 
         <Content
           style={{
-            margin: 16,
-            padding: 20,
-            background: '#f0f2f5',
+            margin: '20px 24px',
+            padding: 0,
+            background: 'transparent',
             minHeight: 280,
             borderRadius: 8,
           }}

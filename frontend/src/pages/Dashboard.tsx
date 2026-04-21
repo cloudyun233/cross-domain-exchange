@@ -101,7 +101,7 @@ const Dashboard: React.FC = () => {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable>
+          <Card hoverable className="stat-card">
             <Statistic
               title="Broker 连接数"
               value={msgStats.onlineConnections || 0}
@@ -111,7 +111,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable>
+          <Card hoverable className="stat-card">
             <Statistic
               title="消息接收总数"
               value={msgStats.totalMessagesReceived || 0}
@@ -120,7 +120,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable>
+          <Card hoverable className="stat-card">
             <Statistic
               title="消息发送总数"
               value={msgStats.totalMessagesSent || 0}
@@ -129,7 +129,7 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card hoverable>
+          <Card hoverable className="stat-card">
             <Statistic
               title="JVM 内存"
               value={stats.jvmUsedMemory || 0}

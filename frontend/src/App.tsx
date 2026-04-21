@@ -39,10 +39,29 @@ function App() {
       locale={zhCN}
       theme={{
         token: {
-          colorPrimary: '#1890ff',
-          borderRadius: 6,
+          colorPrimary: '#007AFF',
+          borderRadius: 10,
           fontSize: 14,
+          fontFamily: `-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', 'Helvetica Neue', Arial, sans-serif`,
+          colorBgLayout: '#F5F5F7',
+          colorBorderSecondary: 'rgba(0,0,0,0.06)',
         },
+        components: {
+          Card: {
+            paddingLG: 20,
+            borderRadiusLG: 16,
+          },
+          Button: {
+            borderRadius: 8,
+            controlHeight: 36,
+          },
+          Input: {
+            controlHeight: 36,
+          },
+          Select: {
+            controlHeight: 36,
+          }
+        }
       }}
     >
       <AuthProvider>
