@@ -12,9 +12,7 @@ RUN apt-get update \
        tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制本地编译好的 jar 文件和静态资源
-COPY target/*.jar /app/app.jar
-RUN cp -r src/main/resources/static /opt/static 2>/dev/null || true
+COPY cross-domain-exchange-1.0.0.jar /app/app.jar
 
 ENV TZ=Asia/Shanghai
 ENV LD_LIBRARY_PATH=/opt/nanosdk/lib
@@ -23,4 +21,4 @@ ENV JNA_LIBRARY_PATH=/opt/nanosdk/lib
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-Dspring.web.resources.static-locations=file:/opt/static/", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

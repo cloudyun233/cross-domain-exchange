@@ -11,8 +11,8 @@ services:
       - "18083:18083"
     volumes:
       - ./emqx/emqx.conf:/opt/emqx/etc/emqx.conf
-      - emqx-data:/opt/emqx/data
-      - emqx-log:/opt/emqx/log
+      - ./emqx/data:/opt/emqx/data
+      - ./emqx/log:/opt/emqx/log
     environment:
       - EMQX_NAME=cross-domain-emqx
     healthcheck:
@@ -44,7 +44,3 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-
-volumes:
-  emqx-data:
-  emqx-log:

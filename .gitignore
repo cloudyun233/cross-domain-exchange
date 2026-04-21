@@ -85,10 +85,6 @@ dist-ssr/
 *.local
 
 
-# EMQX
-emqx/data/
-emqx/log/
-
 # Environment variables
 .env
 .env.local
