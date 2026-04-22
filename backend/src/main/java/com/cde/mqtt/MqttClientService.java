@@ -162,9 +162,9 @@ public class MqttClientService {
     public void subscribeForUser(String username, String topic, int qos, BiConsumer<String, String> callback) {
         UserMqttContext ctx = requireConnectedContext(username);
         synchronized (ctx.lock) {
-            sendSubscribe(ctx.client, topic, qos);
             ctx.callbacks.put(topic, callback);
             ctx.qosMap.put(topic, qos);
+            sendSubscribe(ctx.client, topic, qos, callback);
         }
         log.info("User {} subscribed to topic {}, qos={}", username, topic, qos);
     }
@@ -385,17 +385,26 @@ public class MqttClientService {
         }
     }
 
-    private void sendSubscribe(Mqtt5AsyncClient client, String topic, int qos) {
+    private void sendSubscribe(Mqtt5AsyncClient client, String topic, int qos, BiConsumer<String, String> callback) {
         if (client == null || !client.getState().isConnected()) {
             throw new IllegalStateException("MQTT broker is not connected");
         }
 
         try {
-            CompletableFuture<Mqtt5SubAck> future = client.toAsync()
+            var builder = client.toAsync()
                     .subscribeWith()
                     .topicFilter(topic)
-                    .qos(MqttQos.fromCode(qos))
-                    .send();
+                    .qos(MqttQos.fromCode(qos));
+
+            if (callback != null) {
+                builder.callback(publish -> {
+                    String receivedTopic = publish.getTopic().toString();
+                    String payload = new String(publish.getPayloadAsBytes(), StandardCharsets.UTF_8);
+                    callback.accept(receivedTopic, payload);
+                });
+            }
+
+            CompletableFuture<Mqtt5SubAck> future = builder.send();
             future.get(subscribeTimeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
             throw mapSubscribeException(topic, e);

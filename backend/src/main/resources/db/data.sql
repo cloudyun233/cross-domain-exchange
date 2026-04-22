@@ -22,4 +22,5 @@ INSERT INTO sys_topic_acl (username, topic_filter, action, access_type) VALUES
   ('consumer_social', '/cross_domain/medical/#', 'subscribe', 'allow'),
   ('admin', '/cross_domain/#', 'all', 'allow'),
   ('consumer_medical_swh', '/cross_domain/medical/swh/#', 'subscribe', 'allow'),
+  ('*', 'will/#', 'publish', 'allow'),
   ('*', '#', 'all', 'deny');
