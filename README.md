@@ -148,7 +148,7 @@ docker-compose up -d emqx
 ```bash
 cd backend
 # 编译打包
-./mvnw.cmd clean package -DskipTests
+./mvnw.cmd package -DskipTests
 # 启动打包后的 jar 文件
 java -jar target/cross-domain-exchange-1.0.0.jar
 ```
