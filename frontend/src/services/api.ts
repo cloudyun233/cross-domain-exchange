@@ -128,17 +128,6 @@ export const api = {
     });
   },
 
-  /**
-   * 兼容旧流程：SSE + MQTT + 订阅一体（若 SSE 已存在则复用）。
-   */
-  createSubscribeStream: (topic: string, qos: number = 1): EventSourcePolyfill => {
-    const token = sessionStorage.getItem('token');
-    const url = `${API_BASE}/subscribe/stream?topic=${encodeURIComponent(topic)}&qos=${qos}`;
-    return new EventSourcePolyfill(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  },
-
   cancelSubscribe: (topic: string) =>
     request<any>('/subscribe/cancel', { method: 'POST', params: { topic } }),
   /** 在已有 MQTT + SSE 的情况下新增订阅主题 */

@@ -18,9 +18,9 @@ INSERT INTO sys_user (domain_id, username, password_hash, role_type, client_id) 
   (2,    'consumer_medical_swh', '$2a$10$bxzESBSX/icH5EonWyrbwubwAx3WxtoGhNxAqT2JQmhrQ3nmovpzO', 'consumer', 'consumer_medical_swh_001');
 
 INSERT INTO sys_topic_acl (username, topic_filter, action, access_type) VALUES
-  ('producer_medical_swh', '/cross_domain/medical/swh/#', 'publish', 'allow'),
-  ('consumer_social', '/cross_domain/medical/#', 'subscribe', 'allow'),
-  ('admin', '/cross_domain/#', 'all', 'allow'),
-  ('consumer_medical_swh', '/cross_domain/medical/swh/#', 'subscribe', 'allow'),
+  ('producer_medical_swh', 'cross_domain/medical/swh', 'publish', 'allow'),
+  ('consumer_social', 'cross_domain/medical/#', 'subscribe', 'allow'),
+  ('admin', 'cross_domain/#', 'all', 'allow'),
+  ('consumer_medical_swh', 'cross_domain/medical/swh', 'subscribe', 'allow'),
   ('*', 'will/#', 'publish', 'allow'),
   ('*', '#', 'all', 'deny');

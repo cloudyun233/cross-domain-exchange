@@ -56,11 +56,11 @@ public class DomainServiceImpl implements DomainService {
                 .toList();
 
         DomainTreeNode root = DomainTreeNode.builder()
-                .key("/cross_domain")
+                .key("cross_domain")
                 .title("跨域交换")
                 .pathName("跨域交换")
-                .topicPath("/cross_domain")
-                .subscribeTopic("/cross_domain/#")
+                .topicPath("cross_domain")
+                .subscribeTopic("cross_domain/#")
                 .isLeaf(rootChildren.isEmpty())
                 .children(rootChildren)
                 .build();
@@ -84,7 +84,7 @@ public class DomainServiceImpl implements DomainService {
             ));
         }
 
-        String topicPath = "/cross_domain/" + codePath;
+        String topicPath = "cross_domain/" + codePath;
 
         return DomainTreeNode.builder()
                 .key(topicPath)
@@ -94,7 +94,7 @@ public class DomainServiceImpl implements DomainService {
                 .domainName(domain.getDomainName())
                 .pathName(namePath)
                 .topicPath(topicPath)
-                .subscribeTopic(topicPath + "/#")
+                .subscribeTopic(children.isEmpty() ? topicPath : topicPath + "/#")
                 .isLeaf(children.isEmpty())
                 .children(children)
                 .build();

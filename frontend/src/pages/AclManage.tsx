@@ -177,7 +177,7 @@ const AclManage: React.FC = () => {
             rules={[{ required: true, message: '请输入主题过滤器' }]}
             extra="支持 MQTT 通配符：+（单层）和 #（多层）"
           >
-            <Input placeholder="如: /cross_domain/medical/#" />
+            <Input placeholder="如: cross_domain/medical/#" />
           </Form.Item>
           <Form.Item name="action" label="动作" rules={[{ required: true, message: '请选择动作' }]}>
             <Select

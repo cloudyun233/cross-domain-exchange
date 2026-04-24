@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Badge, Button, Card, Col, Empty, Input, List, Radio, Row, Space, Tag, Tree, Typography, message } from 'antd';
-import { LinkOutlined, PauseCircleOutlined, PlayCircleOutlined, PoweroffOutlined } from '@ant-design/icons';
+import { DisconnectOutlined, LinkOutlined, MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons';
 import { useSubscribe } from '../contexts/SubscribeContext';
 import { api } from '../services/api';
 
@@ -19,11 +19,10 @@ interface DomainTreeNode {
 
 const Subscribe: React.FC = () => {
   const [domainTree, setDomainTree] = useState<DomainTreeNode[]>([]);
-  const [mqttActionLoading, setMqttActionLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const {
     topic,
     qos,
-    listening,
     activeTopic,
     messages,
     selectedKey,
@@ -31,15 +30,16 @@ const Subscribe: React.FC = () => {
     mqttConnected,
     mqttProtocol,
     sseConnected,
+    subscribedTopics,
     subscriptionCount,
     setTopic,
     setQos,
     setSelectedKey,
     setSelectedName,
-    startListening,
-    stopListening,
     connectMqtt,
     disconnectMqtt,
+    subscribeTopic,
+    cancelTopic,
     clearMessages,
   } = useSubscribe();
 
@@ -51,25 +51,47 @@ const Subscribe: React.FC = () => {
     });
   }, []);
 
-  const handleConnectMqtt = async () => {
-    setMqttActionLoading(true);
+  const handleConnect = async () => {
+    setActionLoading(true);
     try {
       await connectMqtt();
     } catch (error: any) {
       message.error(error.message || 'MQTT 连接失败');
     } finally {
-      setMqttActionLoading(false);
+      setActionLoading(false);
     }
   };
 
-  const handleDisconnectMqtt = async () => {
-    setMqttActionLoading(true);
+  const handleDisconnect = async () => {
+    setActionLoading(true);
     try {
       await disconnectMqtt();
     } catch (error: any) {
       message.error(error.message || 'MQTT 断开失败');
     } finally {
-      setMqttActionLoading(false);
+      setActionLoading(false);
+    }
+  };
+
+  const handleSubscribe = async () => {
+    setActionLoading(true);
+    try {
+      await subscribeTopic();
+    } catch (error: any) {
+      message.error(error.message || '订阅失败');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    setActionLoading(true);
+    try {
+      await cancelTopic();
+    } catch (error: any) {
+      message.error(error.message || '取消订阅失败');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -111,6 +133,7 @@ const Subscribe: React.FC = () => {
         <Col xs={24} lg={15}>
           <Card style={{ marginBottom: 16 }}>
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              {/* 状态指示器 */}
               <Space wrap>
                 <Badge status={sseConnected ? 'processing' : 'default'} text={sseConnected ? 'SSE 已连接' : 'SSE 未连接'} />
                 <Badge status={mqttConnected ? 'success' : 'default'} text={mqttConnected ? 'MQTT 已连接' : 'MQTT 已断开'} />
@@ -120,6 +143,17 @@ const Subscribe: React.FC = () => {
                 <Tag color="purple">记忆订阅: {subscriptionCount}</Tag>
               </Space>
 
+              {/* 已订阅主题列表 */}
+              {subscribedTopics.length > 0 && (
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>已记忆的订阅: </Text>
+                  {subscribedTopics.map((t) => (
+                    <Tag key={t} color="blue" style={{ marginBottom: 4 }}>{t}</Tag>
+                  ))}
+                </div>
+              )}
+
+              {/* 订阅过滤器输入 */}
               <div>
                 <Text strong>订阅过滤器:</Text>
                 <Input
@@ -130,6 +164,7 @@ const Subscribe: React.FC = () => {
                 />
               </div>
 
+              {/* QoS 选择 */}
               <div>
                 <Text strong>QoS:</Text>
                 <Radio.Group value={qos} onChange={(e) => setQos(e.target.value)} style={{ marginLeft: 8 }}>
@@ -139,39 +174,54 @@ const Subscribe: React.FC = () => {
                 </Radio.Group>
               </div>
 
+              {/* 操作按钮 */}
               <Space wrap>
-                {!listening ? (
-                  <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => void startListening()}>
-                    开始监听
-                  </Button>
-                ) : (
-                  <Button danger icon={<PauseCircleOutlined />} onClick={() => void stopListening()}>
-                    停止监听
-                  </Button>
-                )}
-
+                {/* 1. 连接 MQTT */}
                 <Button
+                  type="primary"
                   icon={<LinkOutlined />}
-                  onClick={() => void handleConnectMqtt()}
-                  loading={mqttActionLoading}
+                  onClick={() => void handleConnect()}
+                  loading={actionLoading}
                   disabled={mqttConnected}
                 >
                   连接 MQTT
                 </Button>
+
+                {/* 2. 订阅主题（MQTT 已连接时才可点） */}
                 <Button
-                  icon={<PoweroffOutlined />}
+                  icon={<PlusCircleOutlined />}
+                  onClick={() => void handleSubscribe()}
+                  loading={actionLoading}
+                  disabled={!mqttConnected || !topic.trim()}
+                >
+                  订阅主题
+                </Button>
+
+                {/* 3. 取消订阅 */}
+                <Button
+                  icon={<MinusCircleOutlined />}
+                  onClick={() => void handleCancel()}
+                  loading={actionLoading}
+                  disabled={!activeTopic}
+                >
+                  取消订阅
+                </Button>
+
+                {/* 4. 断开 MQTT */}
+                <Button
                   danger
-                  onClick={() => void handleDisconnectMqtt()}
-                  loading={mqttActionLoading}
+                  icon={<DisconnectOutlined />}
+                  onClick={() => void handleDisconnect()}
+                  loading={actionLoading}
                   disabled={!mqttConnected}
                 >
                   断开 MQTT
                 </Button>
 
-                <Badge
-                  status={listening ? 'processing' : 'default'}
-                  text={listening ? `监听中: ${activeTopic || topic}` : '未监听'}
-                />
+                {/* 活跃订阅状态 */}
+                {activeTopic && (
+                  <Badge status="processing" text={`活跃订阅: ${activeTopic}`} />
+                )}
               </Space>
             </Space>
           </Card>
@@ -181,7 +231,7 @@ const Subscribe: React.FC = () => {
             extra={messages.length > 0 && <Button size="small" onClick={clearMessages}>清空</Button>}
           >
             {messages.length === 0 ? (
-              <Empty description={listening ? '监听已建立，等待消息...' : '选择域节点后开始监听'} />
+              <Empty description={mqttConnected ? '等待消息...' : '请先连接 MQTT 并订阅主题'} />
             ) : (
               <List
                 dataSource={messages}
