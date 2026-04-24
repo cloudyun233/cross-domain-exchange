@@ -104,7 +104,7 @@ public class AuditServiceImpl implements AuditService {
                         event.getOrDefault("qos", "0"));
                 break;
             default:
-                log.warn("[审计] 收到未识别的Webhook事件: {}, 已忽略", eventType);
+                log.debug("[审计] 收到未识别的Webhook事件: {}, 已忽略", eventType);
                 return;
         }
 
