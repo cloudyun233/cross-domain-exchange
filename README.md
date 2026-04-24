@@ -160,8 +160,8 @@ cd frontend
 # 安装依赖并编译打包
 npm install
 npm run build
-# 使用 npx serve 启动打包后的 dist 目录
-npx serve dist -p 5173
+# 使用 npm run dev 启动打包后的 dist 目录
+npm run dev
 ```
 
 ### 数据库初始化
