@@ -319,39 +319,8 @@ cross-domain-exchange/
 
 ***
 
-## API 接口
+## 文档
 
-| 接口                               | 方法             | 说明               |
-| -------------------------------- | -------------- | ---------------- |
-| `/api/auth/login`                | POST           | 用户登录             |
-| `/api/auth/refresh`              | POST           | 刷新令牌             |
-| `/api/auth/me`                   | GET            | 获取当前用户信息         |
-| `/api/status/backend`            | GET            | 后端服务状态           |
-| `/api/status/emqx`               | GET            | EMQX 服务状态        |
-| `/api/domains`                   | GET/POST       | 安全域列表/创建         |
-| `/api/domains/tree`              | GET            | 安全域树             |
-| `/api/domains/{id}`              | GET/PUT/DELETE | 安全域详情/更新/删除      |
-| `/api/clients`                   | GET/POST       | 客户端列表/创建         |
-| `/api/clients/{id}`              | GET/PUT/DELETE | 客户端详情/更新/删除      |
-| `/api/topics/tree`               | GET            | 主题树（基于域树生成）      |
-| `/api/topics/publish`            | POST           | 发布消息             |
-| `/api/acl-rules`                 | GET/POST       | ACL 规则列表/创建      |
-| `/api/acl-rules/{id}`            | PUT/DELETE     | ACL 规则更新/删除      |
-| `/api/acl-rules/sync`            | POST           | ACL 规则同步到 Broker |
-| `/api/audit-logs`                | GET            | 审计日志查询           |
-| `/api/monitor/metrics`           | GET            | 系统指标             |
-| `/api/monitor/message-stats`     | GET            | 消息统计             |
-| `/api/monitor/client-stats`      | GET            | 客户统计             |
-| `/api/monitor/topic-stats`       | GET            | 主题统计             |
-| `/api/monitor/connection-status` | GET            | MQTT 连接状态        |
-| `/api/subscribe/sse`             | GET            | SSE 事件流          |
-| `/api/subscribe/stream`          | GET            | SSE + MQTT 订阅流   |
-| `/api/subscribe/topic`           | POST           | 新增订阅主题           |
-| `/api/subscribe/cancel`          | POST           | 取消订阅             |
-| `/api/subscribe/session-status`  | GET            | 订阅会话状态           |
-| `/api/subscribe/connect`         | POST           | 建立 MQTT 持久会话     |
-| `/api/subscribe/disconnect`      | POST           | 断开 MQTT（保留 SSE）  |
-| `/api/subscribe/close`           | POST           | 完全关闭订阅           |
-| `/api/network/presets`           | GET            | 弱网模拟预设           |
-| `/api/network/simulate`          | POST           | 设置弱网模拟参数         |
+- [API 接口文档](docs/api.md)
+- [数据库迁移：H2 → MySQL](docs/migration-to-mysql.md)
 
