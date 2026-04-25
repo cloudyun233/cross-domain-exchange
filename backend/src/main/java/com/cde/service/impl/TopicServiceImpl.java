@@ -32,9 +32,15 @@ public class TopicServiceImpl implements TopicService {
                     "backend");
             log.info("消息发布成功: topic={}, qos={}, retain={}, user={}", topic, qos, retain, username);
         } catch (BusinessException e) {
-            auditService.log(username, "publish_fail",
-                    String.format("发布失败: topic=%s, 原因=%s", topic, e.getMessage()),
-                    "backend");
+            if (e.getStatus() == HttpStatus.FORBIDDEN) {
+                auditService.log(username, "acl_deny",
+                        String.format("非法操作拦截：用户 %s 无publish权限, 主题=%s", username, topic),
+                        "backend");
+            } else {
+                auditService.log(username, "publish_fail",
+                        String.format("发布失败: topic=%s, 原因=%s", topic, e.getMessage()),
+                        "backend");
+            }
             throw e;
         } catch (Exception e) {
             auditService.log(username, "publish_fail",

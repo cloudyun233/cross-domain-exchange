@@ -70,7 +70,7 @@
 | ---------------------- | ---------- | --- | -------- | ----------------------------- |
 | `admin`                | `admin123` | 管理员 | 全域       | 订阅 `cross_domain/#`           |
 | `producer_medical_swh` | `123456`   | 生产者 | 医疗域/西南医院 | 发布 `cross_domain/medical/swh` |
-| `consumer_social`      | `123456`   | 消费者 | 政务域      | 订阅 `cross_domain/medical/#`   |
+| `consumer_gov`         | `123456`   | 消费者 | 政务域      | 订阅 `cross_domain/gov/#`       |
 | `consumer_medical_swh` | `123456`   | 消费者 | 医疗域/西南医院 | 订阅 `cross_domain/medical/swh` |
 
 ## 功能模块

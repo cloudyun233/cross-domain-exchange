@@ -61,7 +61,7 @@ const Login: React.FC = () => {
           <Paragraph style={{ margin: '4px 0 0', fontSize: 12 }} type="secondary">
             管理员：admin / admin123<br />
             生产者（医疗域 / 西南医院）：producer_medical_swh / 123456<br />
-            消费者（政务域）：consumer_social / 123456<br />
+            消费者（政务域）：consumer_gov / 123456<br />
             消费者（医疗域 / 西南医院）：consumer_medical_swh / 123456
           </Paragraph>
         </Card>

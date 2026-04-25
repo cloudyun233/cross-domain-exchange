@@ -15,9 +15,6 @@ RUN apt-get update \
 COPY cross-domain-exchange-1.0.0.jar /app/app.jar
 
 ENV TZ=Asia/Shanghai
-ENV LD_LIBRARY_PATH=/opt/nanosdk/lib
-ENV LD_PRELOAD=/opt/nanosdk/lib/libmsquic.so
-ENV JNA_LIBRARY_PATH=/opt/nanosdk/lib
 
 EXPOSE 8080
 
