@@ -66,12 +66,12 @@
 
 ## 演示账号
 
-| 用户名                    | 密码         | 角色  | 所属域      | 权限                               |
-| ---------------------- | ---------- | --- | -------- | -------------------------------- |
-| `admin`                | `admin123` | 管理员 | 全域       | 订阅 `/cross_domain/#`             |
-| `producer_medical_swh` | `123456`   | 生产者 | 医疗域/西南医院 | 发布 `/cross_domain/medical/swh/#` |
-| `consumer_social`      | `123456`   | 消费者 | 政务域      | 订阅 `/cross_domain/medical/#`     |
-| `consumer_medical_swh` | `123456`   | 消费者 | 医疗域/西南医院 | 订阅 `/cross_domain/medical/swh/#` |
+| 用户名                    | 密码         | 角色  | 所属域      | 权限                            |
+| ---------------------- | ---------- | --- | -------- | ----------------------------- |
+| `admin`                | `admin123` | 管理员 | 全域       | 订阅 `cross_domain/#`           |
+| `producer_medical_swh` | `123456`   | 生产者 | 医疗域/西南医院 | 发布 `cross_domain/medical/swh` |
+| `consumer_social`      | `123456`   | 消费者 | 政务域      | 订阅 `cross_domain/medical/#`   |
+| `consumer_medical_swh` | `123456`   | 消费者 | 医疗域/西南医院 | 订阅 `cross_domain/medical/swh` |
 
 ## 功能模块
 
@@ -120,6 +120,7 @@ docker-compose up -d --build
 ```
 
 > **说明：** 编译产物需手动放置到 `dockerrun` 目录，目录结构如下：
+>
 > ```
 > dockerrun/
 > ├── backend/
@@ -296,7 +297,7 @@ cross-domain-exchange/
 | JSON Schema 校验                   | ❌ 未实现 | 数据格式转换后未进行 Schema 校验                                                                                                                                                                                                |
 | 安全域树形管理（多级域自关联）                  | ✅ 已实现 | [SysDomain.java](backend/src/main/java/com/cde/entity/SysDomain.java) parentId 自关联；[DomainController.java](backend/src/main/java/com/cde/controller/DomainController.java) 支持 CRUD                                  |
 | 用户/角色管理（role\_type + client\_id） | ✅ 已实现 | [ClientController.java](backend/src/main/java/com/cde/controller/ClientController.java) 用户 CRUD；[SysUser.java](backend/src/main/java/com/cde/entity/SysUser.java) 字段完整                                              |
-| 容器化部署（Docker 一键部署）      | ✅ 已实现 | [dockerrun/docker-compose.yml](dockerrun/docker-compose.yml) 编排 EMQX+Backend+Frontend；从 GitHub Release 下载编译产物后一键启动 |
+| 容器化部署（Docker 一键部署）               | ✅ 已实现 | [dockerrun/docker-compose.yml](dockerrun/docker-compose.yml) 编排 EMQX+Backend+Frontend；从 GitHub Release 下载编译产物后一键启动                                                                                                  |
 | 弱网模拟预设（Linux tc 工具，5 种场景）        | ✅ 已实现 | [NetworkController.java](backend/src/main/java/com/cde/controller/NetworkController.java) 支持无限制/标准/政务波动/普通弱网/极端弱网                                                                                                   |
 | 数据库双模兼容（H2 开发/MySQL 生产）          | ✅ 已实现 | [application.yml](backend/src/main/resources/application.yml) H2 (MODE=MySQL)；[application-mysql.yml](backend/src/main/resources/application-mysql.yml) MySQL 8.0                                                   |
 | EMQX 集群高可用                       | ❌ 未实现 | 非企业级仅支持单节点 EMQX                                                                                                                                                                                                     |

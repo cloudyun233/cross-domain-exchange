@@ -81,6 +81,8 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const sseRef = useRef<EventSourcePolyfill | null>(null);
+  const sseConnectedRef = useRef(false);
+  const sseWaitersRef = useRef<Array<() => void>>([]);
   const sseReconnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sseReconnAttemptsRef = useRef(0);
   const shouldSseReconnRef = useRef(false);
@@ -88,12 +90,22 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   // ── 状态同步工具 ──────────────────────────────────────────────────────────
 
+  const updateSseConnected = (connected: boolean) => {
+    sseConnectedRef.current = connected;
+    setSseConnected(connected);
+    if (connected) {
+      const waiters = sseWaitersRef.current;
+      sseWaitersRef.current = [];
+      waiters.forEach((resolve) => resolve());
+    }
+  };
+
   const applySessionStatus = (data: any) => {
     const connected = Boolean(data?.mqttConnected);
     mqttConnectedRef.current = connected;
     setMqttConnected(connected);
     setMqttProtocol(data?.protocol || '未连接');
-    setSseConnected(Boolean(data?.sseConnected));
+    updateSseConnected(Boolean(data?.sseConnected));
     setSubscribedTopics(data?.subscribedTopics || []);
     setSubscriptionCount(Number(data?.subscriptionCount || 0));
   };
@@ -127,7 +139,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
   const closeSse = () => {
     if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
     clearSseReconnTimer();
-    setSseConnected(false);
+    updateSseConnected(false);
   };
 
   const openSse = () => {
@@ -139,7 +151,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     es.addEventListener('connected', ((event: any) => {
       if (event.data) console.info('[SSE] connected 事件收到:', event.data);
       sseReconnAttemptsRef.current = 0;
-      setSseConnected(true);
+      updateSseConnected(true);
       void refreshSessionStatus();
     }) as any);
 
@@ -161,9 +173,26 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
 
     es.onerror = () => {
       console.warn('[SSE] 连接断开');
-      setSseConnected(false);
+      updateSseConnected(false);
       if (shouldSseReconnRef.current) void scheduleSseReconn();
     };
+  };
+
+  const ensureSseConnected = async () => {
+    if (sseConnectedRef.current) return;
+    const connectedPromise = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        sseWaitersRef.current = sseWaitersRef.current.filter((waiter) => waiter !== onConnected);
+        reject(new Error('SSE 连接建立超时，请稍后重试'));
+      }, 3000);
+      const onConnected = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      sseWaitersRef.current.push(onConnected);
+    });
+    openSse();
+    await connectedPromise;
   };
 
   const scheduleSseReconn = async () => {
@@ -192,12 +221,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
   const connectMqtt = async () => {
     console.info('[MQTT] 请求连接...');
 
-    // 确保 SSE 通道存在
-    if (!sseRef.current) {
-      console.info('[MQTT] SSE 未建立，先建立 SSE');
-      openSse();
-      await new Promise((resolve) => setTimeout(resolve, 600));
-    }
+    await ensureSseConnected();
 
     const resp = await api.connectSubscribeSession();
     if (resp.success) {
@@ -237,6 +261,8 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
       message.warning('请先连接 MQTT');
       return;
     }
+
+    await ensureSseConnected();
 
     const resp = await api.subscribeToTopic(nextTopic, qos);
     if (resp.success) {

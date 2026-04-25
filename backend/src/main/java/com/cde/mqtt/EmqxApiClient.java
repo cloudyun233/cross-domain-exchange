@@ -57,16 +57,23 @@ public class EmqxApiClient {
 
     public void pushAclRule(SysTopicAcl acl) {
         try {
-            String url = baseUrl + "/authorization/sources/built_in_database/rules/users";
-            Map<String, Object> rule = new HashMap<>();
-            rule.put("username", acl.getUsername());
-            rule.put("rules", List.of(Map.of(
+            Map<String, Object> rule = Map.of(
                     "topic", acl.getTopicFilter(),
                     "action", acl.getAction(),
                     "permission", acl.getAccessType()
-            )));
+            );
 
-            exchange(url, HttpMethod.POST, List.of(rule), String.class);
+            if ("*".equals(acl.getUsername())) {
+                String allUrl = baseUrl + "/authorization/sources/built_in_database/rules/all";
+                exchange(allUrl, HttpMethod.POST, Map.of("rules", List.of(rule)), String.class);
+            } else {
+                String userUrl = baseUrl + "/authorization/sources/built_in_database/rules/users/" + acl.getUsername();
+                Map<String, Object> body = new HashMap<>();
+                body.put("username", acl.getUsername());
+                body.put("rules", List.of(rule));
+                exchange(userUrl, HttpMethod.PUT, body, String.class);
+            }
+
             log.info("ACL pushed to EMQX: username={}, topic={}", acl.getUsername(), acl.getTopicFilter());
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode().value() == 409) {
@@ -115,17 +122,33 @@ public class EmqxApiClient {
                 log.debug("Ignoring failure to enable built_in_database: {}", e.getMessage());
             }
 
-            Map<String, List<Map<String, Object>>> grouped = new HashMap<>();
+            List<Map<String, Object>> allRules = new ArrayList<>();
+            Map<String, List<Map<String, Object>>> userRules = new HashMap<>();
             for (SysTopicAcl acl : rules) {
-                grouped.computeIfAbsent(acl.getUsername(), key -> new ArrayList<>())
-                        .add(Map.of(
-                                "topic", acl.getTopicFilter(),
-                                "action", acl.getAction(),
-                                "permission", acl.getAccessType()
-                        ));
+                Map<String, Object> rule = Map.of(
+                        "topic", acl.getTopicFilter(),
+                        "action", acl.getAction(),
+                        "permission", acl.getAccessType()
+                );
+                if ("*".equals(acl.getUsername())) {
+                    allRules.add(rule);
+                } else {
+                    userRules.computeIfAbsent(acl.getUsername(), key -> new ArrayList<>()).add(rule);
+                }
             }
 
-            grouped.forEach((username, aclRules) -> {
+            if (!allRules.isEmpty()) {
+                try {
+                    String allUrl = baseUrl + "/authorization/sources/built_in_database/rules/all";
+                    Map<String, Object> body = Map.of("rules", allRules);
+                    exchange(allUrl, HttpMethod.POST, body, String.class);
+                    log.debug("Pushed {} 'all' ACL rules to EMQX", allRules.size());
+                } catch (Exception e) {
+                    log.warn("Failed to push 'all' ACL rules: {}", e.getMessage());
+                }
+            }
+
+            userRules.forEach((username, aclRules) -> {
                 try {
                     String url = userUrlTemplate.replace("{username}", username);
                     Map<String, Object> body = new HashMap<>();
