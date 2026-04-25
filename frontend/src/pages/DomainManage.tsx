@@ -105,9 +105,12 @@ const DomainManage: React.FC = () => {
   ];
 
   return (
-    <div>
-      <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
-        <Title level={4} style={{ margin: 0 }}>安全域管理</Title>
+    <div className="page-stack">
+      <div className="page-hero">
+        <div>
+          <Title level={3} className="page-title">安全域管理</Title>
+          <Text className="page-subtitle">维护安全域层级、主题前缀与跨域交换边界。</Text>
+        </div>
         <Button
           type="primary"
           icon={<PlusOutlined />}
@@ -117,9 +120,9 @@ const DomainManage: React.FC = () => {
             setModalVisible(true);
           }}
         >
-          新增安全域
+          新增域
         </Button>
-      </Space>
+      </div>
 
       <Card style={{ marginBottom: 16 }}>
         <Text type="secondary">域编码用于 topic 路径，建议使用英文或拼音；域名称可以使用中文。</Text>

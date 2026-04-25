@@ -5,7 +5,9 @@ INSERT INTO sys_domain (id, parent_id, domain_code, domain_name, status) VALUES
   (1, NULL, 'medical', '医疗域', 1),
   (2, 1, 'swh', '西南医院', 1),
   (3, NULL, 'gov', '政务域', 1),
-  (4, NULL, 'enterprise', '企业域', 1);
+  (4, NULL, 'enterprise', '企业域', 1),
+  (5, 3, 'digital_gov', '数字政务局', 1),
+  (6, 4, 'smart_factory', '智造工厂', 1);
 
 -- admin / admin123
 -- producer_medical_swh / 123456

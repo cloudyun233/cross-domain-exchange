@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Col, Row, Statistic, Typography } from 'antd';
+import { Card, Col, Row, Statistic, Tag, Typography } from 'antd';
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -9,7 +9,7 @@ import {
 import ReactECharts from 'echarts-for-react';
 import { api } from '../services/api';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 interface DomainTreeNode {
   key: string;
@@ -65,14 +65,19 @@ const Dashboard: React.FC = () => {
 
   const history: any[] = msgStats.history || [];
   const trafficOption = {
-    title: { text: '消息流量（实时）', left: 'center', textStyle: { fontSize: 14 } },
-    tooltip: { trigger: 'axis' },
+    color: ['#007AFF', '#34C759'],
+    title: { text: '消息流量（实时）', left: 'center', textStyle: { fontSize: 14, fontWeight: 700, color: '#1D1D1F' } },
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.9)', borderColor: 'rgba(0,0,0,0.06)', textStyle: { color: '#1D1D1F' } },
+    grid: { left: 42, right: 24, top: 54, bottom: 54 },
     xAxis: {
       type: 'category',
+      axisLine: { lineStyle: { color: 'rgba(0,0,0,0.08)' } },
+      axisTick: { show: false },
+      axisLabel: { color: '#86868B' },
       data: history.map((item: any) => new Date(item.time).toLocaleTimeString('zh-CN', { hour12: false })),
     },
-    yAxis: { type: 'value', name: '消息 / 5s' },
-    legend: { bottom: 0 },
+    yAxis: { type: 'value', name: '消息 / 5s', splitLine: { lineStyle: { color: 'rgba(0,0,0,0.05)' } }, axisLabel: { color: '#86868B' } },
+    legend: { bottom: 0, textStyle: { color: '#6E6E73' } },
     series: [
       {
         name: '接收',
@@ -96,8 +101,14 @@ const Dashboard: React.FC = () => {
   const topologyOption = buildTopologyOption(domainTree);
 
   return (
-    <div>
-      <Title level={4} style={{ marginTop: 0 }}>监控大盘</Title>
+    <div className="page-stack">
+      <div className="page-hero">
+        <div>
+          <Title level={3} className="page-title">监控大盘</Title>
+          <Text className="page-subtitle">实时观察跨域消息流量、Broker 连接数与安全域拓扑。</Text>
+        </div>
+        <Tag color="processing">5 秒自动刷新</Tag>
+      </div>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
@@ -159,11 +170,11 @@ const Dashboard: React.FC = () => {
 function buildTopologyOption(domainTree: DomainTreeNode[]) {
   const nodes: any[] = [{
     name: 'EMQX Broker',
-    symbolSize: 52,
+    symbolSize: 58,
     fixed: true,
     itemStyle: { color: '#1677ff' },
-    x: 0,
-    y: 0,
+    x: 180,
+    y: 180,
   }];
   const links: any[] = [];
 
@@ -203,7 +214,7 @@ function buildTopologyOption(domainTree: DomainTreeNode[]) {
       layout: 'force',
       roam: true,
       draggable: true,
-      force: { repulsion: 240, edgeLength: 120, gravity: 0.08 },
+      force: { repulsion: 240, edgeLength: 120, gravity: 0.12 },
       label: { show: true },
       edgeLabel: { show: false },
       data: nodes,

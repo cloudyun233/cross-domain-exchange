@@ -94,8 +94,14 @@ const NetworkSimulate: React.FC = () => {
   }
 
   return (
-    <div>
-      <Title level={4}><ThunderboltOutlined /> 弱网模拟（Linux TC）</Title>
+    <div className="page-stack">
+      <div className="page-hero">
+        <div>
+          <Title level={3} className="page-title"><ThunderboltOutlined /> 弱网模拟</Title>
+          <Text className="page-subtitle">通过 Linux TC 预设场景模拟跨域链路的延迟、丢包与带宽限制。</Text>
+        </div>
+        <Tag color={currentPreset === 'none' ? 'default' : 'processing'}>{currentPreset === 'none' ? '未应用弱网' : `当前：${currentPreset}`}</Tag>
+      </div>
 
       <Alert
         message="说明"
@@ -115,13 +121,14 @@ const NetworkSimulate: React.FC = () => {
             <Col xs={24} sm={12} lg={8} xl={8} xxl={4} key={preset.name}>
               <Card
                 hoverable
+                className={`network-card ${selectedPreset === preset.name ? 'network-card-selected' : ''}`}
                 onClick={() => setSelectedPreset(preset.name)}
                 style={{
-                  borderRadius: 12,
+                  borderRadius: 20,
                   border: isSelected ? `2px solid ${color}` : '2px solid transparent',
-                  boxShadow: isSelected ? `0 4px 12px ${color}33` : '0 2px 8px rgba(0,0,0,0.08)',
+                  boxShadow: isSelected ? `0 22px 48px ${color}24` : '0 10px 34px rgba(18,31,53,0.08)',
                   transition: 'all 0.3s ease',
-                  background: isSelected ? `${color}08` : '#fff',
+                  background: isSelected ? `${color}10` : 'rgba(255,255,255,0.74)',
                   height: '100%',
                 }}
                 styles={{ body: { padding: 20 } }}

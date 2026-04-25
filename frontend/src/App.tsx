@@ -40,27 +40,50 @@ function App() {
       theme={{
         token: {
           colorPrimary: '#007AFF',
-          borderRadius: 10,
+          borderRadius: 12,
           fontSize: 14,
           fontFamily: `-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Inter', 'Helvetica Neue', Arial, sans-serif`,
           colorBgLayout: '#F5F5F7',
+          colorBgContainer: 'rgba(255,255,255,0.78)',
+          colorText: '#1D1D1F',
+          colorTextSecondary: '#6E6E73',
           colorBorderSecondary: 'rgba(0,0,0,0.06)',
+          boxShadowSecondary: '0 10px 34px rgba(18,31,53,0.08)',
+          wireframe: false,
         },
         components: {
           Card: {
             paddingLG: 20,
-            borderRadiusLG: 16,
+            borderRadiusLG: 20,
+            headerFontSize: 15,
           },
           Button: {
-            borderRadius: 8,
-            controlHeight: 36,
+            borderRadius: 999,
+            controlHeight: 38,
+            fontWeight: 650,
           },
           Input: {
-            controlHeight: 36,
+            controlHeight: 38,
+            borderRadius: 12,
           },
           Select: {
-            controlHeight: 36,
-          }
+            controlHeight: 38,
+            borderRadius: 12,
+          },
+          Table: {
+            headerBg: 'rgba(246,248,251,0.82)',
+            headerColor: '#86868B',
+            rowHoverBg: 'rgba(0,122,255,0.045)',
+          },
+          Modal: {
+            borderRadiusLG: 22,
+          },
+          Alert: {
+            borderRadiusLG: 16,
+          },
+          Tag: {
+            borderRadiusSM: 999,
+          },
         }
       }}
     >

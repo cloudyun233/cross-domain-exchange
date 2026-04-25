@@ -96,13 +96,19 @@ const Subscribe: React.FC = () => {
   };
 
   return (
-    <div>
-      <Title level={4}>数据订阅</Title>
-
-      <Row gutter={16}>
+    <div className="page-stack">
+      <div className="page-hero">
+        <div>
+          <Title level={3} className="page-title">数据订阅</Title>
+          <Text className="page-subtitle">连接 MQTT 服务后按安全域订阅主题，实时查看跨域消息。</Text>
+        </div>
+        <Tag color={mqttConnected ? 'success' : 'default'}>{mqttConnected ? '已连接' : '未连接'}</Tag>
+      </div>
+      <Row gutter={[18, 18]}>
         <Col xs={24} lg={9}>
           <Card title="选择订阅域" extra={<Tag color="blue">后端域表驱动</Tag>} style={{ marginBottom: 16 }}>
-            <Tree
+            <div className="ios-group" style={{ padding: 8 }}>
+              <Tree
               showLine
               blockNode
               defaultExpandAll
@@ -122,7 +128,8 @@ const Subscribe: React.FC = () => {
                 </Space>
               )}
               style={{ maxHeight: 420, overflow: 'auto' }}
-            />
+              />
+            </div>
             <Space direction="vertical" size={6} style={{ marginTop: 12, width: '100%' }}>
               <Text type="secondary">当前选择: {selectedName || '未选择'}</Text>
               <Tag color="processing">{topic || '未设置订阅过滤器'}</Tag>

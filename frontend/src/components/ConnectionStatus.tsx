@@ -69,19 +69,7 @@ const ConnectionStatus: React.FC = () => {
   const protocolColor = mqttProtocol === 'TLS' ? 'green' : mqttProtocol === 'TCP' ? 'orange' : 'default';
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: 16,
-        right: 16,
-        zIndex: 9999,
-        background: 'rgba(255,255,255,0.96)',
-        padding: '10px 14px',
-        borderRadius: 10,
-        boxShadow: '0 10px 30px rgba(15, 39, 66, 0.12)',
-        border: '1px solid rgba(24, 144, 255, 0.12)',
-      }}
-    >
+    <div className="floating-status">
       <Space size="middle" wrap>
         <Badge status={backendConnected ? 'success' : 'error'} text={backendConnected ? '后端在线' : '后端离线'} />
         <Badge status={emqxConnected ? 'success' : 'error'} text={emqxConnected ? 'EMQX 在线' : 'EMQX 离线'} />

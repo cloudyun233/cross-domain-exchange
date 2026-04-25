@@ -127,13 +127,16 @@ const ClientManage: React.FC = () => {
   ];
 
   return (
-    <div>
-      <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
-        <Title level={4} style={{ margin: 0 }}>用户管理</Title>
+    <div className="page-stack">
+      <div className="page-hero">
+        <div>
+          <Title level={3} className="page-title">用户管理</Title>
+          <Text className="page-subtitle">管理系统账号、角色与所属安全域，保持权限边界清晰。</Text>
+        </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
           新增用户
         </Button>
-      </Space>
+      </div>
 
       <Card>
         <Table dataSource={users} columns={columns} rowKey="id" loading={loading} pagination={false} />

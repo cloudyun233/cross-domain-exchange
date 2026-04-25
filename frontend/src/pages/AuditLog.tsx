@@ -71,9 +71,12 @@ const AuditLog: React.FC = () => {
   ];
 
   return (
-    <div>
-      <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
-        <Title level={4} style={{ margin: 0 }}>审计日志</Title>
+    <div className="page-stack">
+      <div className="page-hero">
+        <div>
+          <Title level={3} className="page-title">审计日志</Title>
+          <Text className="page-subtitle">检索 MQTT 授权事件、拒绝记录与客户端访问轨迹。</Text>
+        </div>
         <Space>
           <Input
             placeholder="客户端ID"
@@ -95,7 +98,7 @@ const AuditLog: React.FC = () => {
             刷新
           </Button>
         </Space>
-      </Space>
+      </div>
 
       <Card>
         <Table

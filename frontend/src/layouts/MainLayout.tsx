@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Avatar, Button, Dropdown, Layout, Menu, Space, Tag, Typography } from 'antd';
+import { Button, Dropdown, Layout, Menu, Space, Tag, Typography } from 'antd';
 import {
   ApartmentOutlined,
   CloudDownloadOutlined,
@@ -67,33 +67,21 @@ const MainLayout: React.FC = () => {
   ];
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout className="app-shell">
       <Sider
+        className="app-sider"
         trigger={null}
         collapsible
         collapsed={collapsed}
         theme="light"
-        width={240}
-        style={{
-          background: 'rgba(255, 255, 255, 0.7)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          borderRight: '1px solid rgba(0,0,0,0.05)',
-          zIndex: 10,
-        }}
+        width={250}
       >
-        <div
-          style={{
-            height: 64,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderBottom: '1px solid rgba(0,0,0,0.04)',
-          }}
-        >
-          <SettingOutlined style={{ fontSize: 24, color: '#007AFF' }} />
+        <div className="brand-panel">
+          <span className="brand-icon">
+            <SettingOutlined style={{ fontSize: 22 }} />
+          </span>
           {!collapsed && (
-            <Text strong style={{ color: '#1D1D1F', marginLeft: 10, fontSize: 16, whiteSpace: 'nowrap', fontWeight: 600, letterSpacing: '-0.3px' }}>
+            <Text className="brand-title">
               跨域数据交换系统
             </Text>
           )}
@@ -104,50 +92,30 @@ const MainLayout: React.FC = () => {
           selectedKeys={[location.pathname]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
-          style={{ borderRight: 0, background: 'transparent', padding: '12px 8px' }}
+          style={{ padding: '12px 0' }}
         />
       </Sider>
 
       <Layout>
-        <Header
-          style={{
-            padding: '0 24px',
-            background: 'rgba(255, 255, 255, 0.8)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid rgba(0,0,0,0.05)',
-            zIndex: 1,
-          }}
-        >
+        <Header className="app-header">
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
           />
-          <Space size="middle">
+          <Space className="header-actions" size="small" wrap>
             <Tag color={roleColors[normalizedRole] || 'default'}>{user?.roleName || user?.roleType}</Tag>
-            <Text type="secondary">所属域: {user?.domainName || '全域'}</Text>
+            <Tag color="blue">{user?.domainName || '全域'}</Tag>
             <Dropdown menu={{ items: dropdownItems }} placement="bottomRight">
-              <Space style={{ cursor: 'pointer' }}>
-                <Avatar size="small" icon={<UserOutlined />} style={{ background: '#1677ff' }} />
-                <Text strong>{user?.username}</Text>
+              <Space className="header-profile" style={{ cursor: 'pointer' }}>
+                <span className="header-avatar"><UserOutlined /></span>
+                <Text strong className="header-username">{user?.username}</Text>
               </Space>
             </Dropdown>
           </Space>
         </Header>
 
-        <Content
-          style={{
-            margin: '20px 24px',
-            padding: 0,
-            background: 'transparent',
-            minHeight: 280,
-            borderRadius: 8,
-          }}
-        >
+        <Content className="page-container">
           <Outlet />
         </Content>
       </Layout>

@@ -3,7 +3,7 @@ import { Alert, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Tab
 import { DeleteOutlined, EditOutlined, PlusOutlined, SafetyOutlined, SyncOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 const AclManage: React.FC = () => {
   const [rules, setRules] = useState<any[]>([]);
@@ -117,11 +117,14 @@ const AclManage: React.FC = () => {
   ];
 
   return (
-    <div>
-      <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
-        <Title level={4} style={{ margin: 0 }}>
-          <SafetyOutlined /> ACL 规则管理
-        </Title>
+    <div className="page-stack">
+      <div className="page-hero">
+        <div>
+          <Title level={3} className="page-title">
+            <SafetyOutlined /> ACL 规则管理
+          </Title>
+          <Text className="page-subtitle">维护发布、订阅与跨域访问控制规则，并同步到 Broker。</Text>
+        </div>
         <Space>
           <Button icon={<SyncOutlined spin={syncing} />} onClick={handleSync} loading={syncing}>
             全量同步到 Broker
@@ -138,7 +141,7 @@ const AclManage: React.FC = () => {
             新增 ACL 规则
           </Button>
         </Space>
-      </Space>
+      </div>
 
       <Alert
         message="ACL 说明"
