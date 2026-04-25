@@ -5,12 +5,28 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.cde.entity.SysAuditLog;
 import com.cde.mapper.SysAuditLogMapper;
 import com.cde.service.AuditService;
+import com.lowagie.text.Document;
+import com.lowagie.text.DocumentException;
+import com.lowagie.text.Element;
+import com.lowagie.text.Font;
+import com.lowagie.text.FontFactory;
+import com.lowagie.text.PageSize;
+import com.lowagie.text.Paragraph;
+import com.lowagie.text.Phrase;
+import com.lowagie.text.pdf.BaseFont;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.awt.Color;
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,6 +37,8 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class AuditServiceImpl implements AuditService {
+
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final SysAuditLogMapper auditLogMapper;
 
@@ -113,6 +131,54 @@ public class AuditServiceImpl implements AuditService {
 
     @Override
     public Page<SysAuditLog> queryLogs(int page, int size, String clientId, String actionType) {
+        return auditLogMapper.selectPage(new Page<>(page, size), buildLogQuery(clientId, actionType));
+    }
+
+    @Override
+    public byte[] exportLogsAsPdf(String clientId, String actionType) {
+        List<SysAuditLog> logs = auditLogMapper.selectList(buildLogQuery(clientId, actionType));
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        Document document = new Document(PageSize.A4.rotate(), 24, 24, 28, 28);
+        try {
+            PdfWriter.getInstance(document, outputStream);
+            document.open();
+            Font titleFont = createFont(16, Font.BOLD);
+            Font normalFont = createFont(9, Font.NORMAL);
+            Font headerFont = createFont(9, Font.BOLD);
+
+            Paragraph title = new Paragraph("审计日志导出", titleFont);
+            title.setAlignment(Element.ALIGN_CENTER);
+            title.setSpacingAfter(8);
+            document.add(title);
+
+            Paragraph filters = new Paragraph(String.format("过滤条件：客户端ID=%s，操作类型=%s，导出时间=%s",
+                    StringUtils.hasText(clientId) ? clientId : "全部",
+                    StringUtils.hasText(actionType) ? actionType : "全部",
+                    DATE_TIME_FORMATTER.format(LocalDateTime.now())), normalFont);
+            filters.setSpacingAfter(12);
+            document.add(filters);
+
+            PdfPTable table = new PdfPTable(new float[]{1.1f, 2.2f, 2f, 1.6f, 1.6f, 5.5f});
+            table.setWidthPercentage(100);
+            addHeader(table, headerFont, "ID", "时间", "客户端", "操作类型", "IP地址", "详情");
+            for (SysAuditLog logEntry : logs) {
+                addCell(table, normalFont, String.valueOf(logEntry.getId()));
+                addCell(table, normalFont, formatTime(logEntry.getActionTime()));
+                addCell(table, normalFont, safeText(logEntry.getClientId()));
+                addCell(table, normalFont, safeText(logEntry.getActionType()));
+                addCell(table, normalFont, safeText(logEntry.getIpAddress()));
+                addCell(table, normalFont, safeText(logEntry.getDetail()));
+            }
+            document.add(table);
+        } catch (DocumentException e) {
+            throw new IllegalStateException("审计日志PDF导出失败", e);
+        } finally {
+            document.close();
+        }
+        return outputStream.toByteArray();
+    }
+
+    private LambdaQueryWrapper<SysAuditLog> buildLogQuery(String clientId, String actionType) {
         LambdaQueryWrapper<SysAuditLog> wrapper = new LambdaQueryWrapper<>();
         if (StringUtils.hasText(clientId)) {
             wrapper.eq(SysAuditLog::getClientId, clientId);
@@ -121,6 +187,36 @@ public class AuditServiceImpl implements AuditService {
             wrapper.eq(SysAuditLog::getActionType, actionType);
         }
         wrapper.orderByDesc(SysAuditLog::getActionTime);
-        return auditLogMapper.selectPage(new Page<>(page, size), wrapper);
+        return wrapper;
+    }
+
+    private Font createFont(int size, int style) {
+        return FontFactory.getFont("STSong-Light", "UniGB-UCS2-H", BaseFont.NOT_EMBEDDED, size, style);
+    }
+
+    private void addHeader(PdfPTable table, Font font, String... headers) {
+        for (String header : headers) {
+            PdfPCell cell = new PdfPCell(new Phrase(header, font));
+            cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            cell.setBackgroundColor(new Color(238, 242, 247));
+            cell.setPadding(6);
+            table.addCell(cell);
+        }
+    }
+
+    private void addCell(PdfPTable table, Font font, String value) {
+        PdfPCell cell = new PdfPCell(new Phrase(value, font));
+        cell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        cell.setPadding(5);
+        table.addCell(cell);
+    }
+
+    private String formatTime(LocalDateTime time) {
+        return time == null ? "-" : DATE_TIME_FORMATTER.format(time);
+    }
+
+    private String safeText(String value) {
+        return StringUtils.hasText(value) ? value : "-";
     }
 }

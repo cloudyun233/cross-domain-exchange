@@ -11,6 +11,7 @@ interface RequestOptions {
   body?: any;
   params?: Record<string, string>;
   signal?: AbortSignal;
+  responseType?: 'json' | 'blob';
 }
 
 async function parseResponseBody<T>(resp: Response): Promise<T> {
@@ -59,6 +60,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     sessionStorage.removeItem('user');
     window.location.href = '/login';
     throw new Error('认证已过期');
+  }
+
+  if (options.responseType === 'blob') {
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || `请求失败 (${resp.status})`);
+    }
+    return await resp.blob() as T;
   }
 
   const data = await parseResponseBody<any>(resp);
@@ -114,6 +123,12 @@ export const api = {
     if (clientId) params.clientId = clientId;
     if (actionType) params.actionType = actionType;
     return request<any>('/audit-logs', { params });
+  },
+  exportAuditLogsPdf: (clientId?: string, actionType?: string) => {
+    const params: Record<string, string> = {};
+    if (clientId) params.clientId = clientId;
+    if (actionType) params.actionType = actionType;
+    return request<Blob>('/audit-logs/export/pdf', { params, responseType: 'blob' });
   },
 
   /**

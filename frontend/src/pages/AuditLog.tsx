@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table, Tag, Typography, Space, Select, Button, Input } from 'antd';
-import { ReloadOutlined, WarningOutlined } from '@ant-design/icons';
+import { Card, Table, Tag, Typography, Space, Select, Button, Input, message } from 'antd';
+import { DownloadOutlined, ReloadOutlined, WarningOutlined } from '@ant-design/icons';
 import { api } from '../services/api';
 
 const { Title, Text } = Typography;
@@ -9,6 +9,7 @@ const AuditLog: React.FC = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ clientId: '', actionType: '' });
 
@@ -24,6 +25,26 @@ const AuditLog: React.FC = () => {
   };
 
   useEffect(() => { fetchLogs(); }, [page]);
+
+  const exportPdf = async () => {
+    setExporting(true);
+    try {
+      const blob = await api.exportAuditLogsPdf(filters.clientId, filters.actionType);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `audit-logs-${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      message.success('PDF 导出已开始');
+    } catch (error: any) {
+      message.error(error?.message || 'PDF 导出失败');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const actionTypeColors: Record<string, string> = {
     connect: 'green', disconnect: 'default',
@@ -96,6 +117,9 @@ const AuditLog: React.FC = () => {
           />
           <Button icon={<ReloadOutlined />} onClick={() => { setPage(1); fetchLogs(1); }}>
             刷新
+          </Button>
+          <Button type="primary" icon={<DownloadOutlined />} loading={exporting} onClick={exportPdf}>
+            导出 PDF
           </Button>
         </Space>
       </div>

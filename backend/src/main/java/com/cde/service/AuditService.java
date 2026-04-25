@@ -2,6 +2,7 @@ package com.cde.service;
 
 import com.cde.entity.SysAuditLog;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+
 import java.util.Map;
 
 /**
@@ -17,4 +18,7 @@ public interface AuditService {
 
     /** 分页查询审计日志 */
     Page<SysAuditLog> queryLogs(int page, int size, String clientId, String actionType);
+
+    /** 导出审计日志PDF */
+    byte[] exportLogsAsPdf(String clientId, String actionType);
 }
