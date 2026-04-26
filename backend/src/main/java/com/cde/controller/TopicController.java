@@ -49,10 +49,10 @@ public class TopicController {
         String username = auth.getName();
         String token = authHeader.replace("Bearer ", "");
         String convertedPayload;
+        String actualFormat;
         try {
-            String actualFormat = resolveActualFormat(format, payload);
+            actualFormat = resolveActualFormat(format, payload);
             convertedPayload = convertPayload(payload, actualFormat);
-            jsonSchemaValidationService.validate(topic, convertedPayload, actualFormat);
         } catch (BusinessException e) {
             recordFormatConvertFailure(username, topic, format, e.getMessage());
             throw e;
@@ -61,6 +61,7 @@ public class TopicController {
             throw new BusinessException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
 
+        recordJsonSchemaValidationFailureIfAny(username, topic, actualFormat, convertedPayload);
         topicService.publishMsg(topic, convertedPayload, qos, retain, username, token);
         return ApiResponse.ok("消息发布成功", null);
     }
@@ -69,6 +70,16 @@ public class TopicController {
         auditService.log(username, "format_convert_fail",
                 "数据格式转换失败: topic=" + topic + ", format=" + format + ", reason=" + reason,
                 "0.0.0.0");
+    }
+
+    private void recordJsonSchemaValidationFailureIfAny(String username, String topic, String actualFormat, String payload) {
+        try {
+            jsonSchemaValidationService.validate(topic, payload, actualFormat);
+        } catch (RuntimeException e) {
+            auditService.log(username, "json_schema_validate_fail",
+                    "JSON Schema 校验失败但继续发布: topic=" + topic + ", format=" + actualFormat + ", reason=" + e.getMessage(),
+                    "0.0.0.0");
+        }
     }
 
     private String resolveActualFormat(String format, String payload) {

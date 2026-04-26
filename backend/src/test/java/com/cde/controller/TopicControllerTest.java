@@ -77,7 +77,7 @@ class TopicControllerTest {
     }
 
     @Test
-    void publishRecordsAuditAndSkipsBrokerWhenSchemaValidationFails() {
+    void publishRecordsAuditAndStillPublishesWhenSchemaValidationFails() {
         TopicController controller = new TopicController(
                 topicService,
                 List.of(new ValidJsonConverter()),
@@ -90,7 +90,7 @@ class TopicControllerTest {
                 .when(jsonSchemaValidationService)
                 .validate("cross_domain/gov/minzheng/population", "{\"name\":\"张三\"}", "json");
 
-        assertThatThrownBy(() -> controller.publish(
+        controller.publish(
                 "cross_domain/gov/minzheng/population",
                 "{\"name\":\"张三\"}",
                 1,
@@ -98,26 +98,23 @@ class TopicControllerTest {
                 "json",
                 "Bearer token",
                 auth
-        ))
-                .isInstanceOf(BusinessException.class)
-                .extracting("status")
-                .isEqualTo(HttpStatus.BAD_REQUEST);
+        );
 
         ArgumentCaptor<String> detailCaptor = ArgumentCaptor.forClass(String.class);
         verify(auditService).log(
                 org.mockito.Mockito.eq("producer_medical_swh"),
-                org.mockito.Mockito.eq("format_convert_fail"),
+                org.mockito.Mockito.eq("json_schema_validate_fail"),
                 detailCaptor.capture(),
                 org.mockito.Mockito.eq("0.0.0.0")
         );
         assertThat(detailCaptor.getValue()).contains("cross_domain/gov/minzheng/population", "json", "JSON Schema 校验失败");
-        verify(topicService, never()).publishMsg(
-                org.mockito.Mockito.anyString(),
-                org.mockito.Mockito.anyString(),
-                org.mockito.Mockito.anyInt(),
-                org.mockito.Mockito.anyBoolean(),
-                org.mockito.Mockito.anyString(),
-                org.mockito.Mockito.anyString()
+        verify(topicService).publishMsg(
+                org.mockito.Mockito.eq("cross_domain/gov/minzheng/population"),
+                org.mockito.Mockito.eq("{\"name\":\"张三\"}"),
+                org.mockito.Mockito.eq(1),
+                org.mockito.Mockito.eq(false),
+                org.mockito.Mockito.eq("producer_medical_swh"),
+                org.mockito.Mockito.eq("token")
         );
     }
 
