@@ -4,6 +4,7 @@ import com.cde.dto.ApiResponse;
 import com.cde.dto.DomainTreeNode;
 import com.cde.exception.BusinessException;
 import com.cde.service.AuditService;
+import com.cde.service.JsonSchemaValidationService;
 import com.cde.service.TopicService;
 import com.cde.service.converter.DataConverter;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -28,6 +29,7 @@ public class TopicController {
     private final List<DataConverter> dataConverters;
     private final ObjectMapper objectMapper;
     private final AuditService auditService;
+    private final JsonSchemaValidationService jsonSchemaValidationService;
 
     @GetMapping("/tree")
     public ApiResponse<List<DomainTreeNode>> getTopicTree() {
@@ -50,6 +52,7 @@ public class TopicController {
         try {
             String actualFormat = resolveActualFormat(format, payload);
             convertedPayload = convertPayload(payload, actualFormat);
+            jsonSchemaValidationService.validate(topic, convertedPayload, actualFormat);
         } catch (BusinessException e) {
             recordFormatConvertFailure(username, topic, format, e.getMessage());
             throw e;

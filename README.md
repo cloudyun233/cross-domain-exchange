@@ -257,7 +257,7 @@ cross-domain-exchange/
 | 主题订阅/取消订阅（精确、+单层、#多层通配）                       | ✅ 已实现   | [MqttTopicUtil.java](backend/src/main/java/com/cde/util/MqttTopicUtil.java) 实现通配符匹配                                                                                                                                                                                                                            |
 | 消息生命周期管理（持久化、TTL、死信队列）                        | ⚠️ 部分实现 | EMQX 原生不支持 死信队列：EMQX 是 MQTT Broker，不是消息队列（如 RabbitMQ/Kafka）。消息过期或投递失败时，EMQX 只会丢弃，不会自动转移。                                                                                                                                                                                                                       |
 | SSE 实时推送（前端监控链路）                              | ✅ 已实现   | [SubscribeServiceImpl.java:38-41](backend/src/main/java/com/cde/service/impl/SubscribeServiceImpl.java#L38-L41) openSse 创建 SseEmitter；[SubscribeController.java](backend/src/main/java/com/cde/controller/SubscribeController.java) /api/subscribe/sse 端点，前端 EventSource 对接 5 秒快照窗口推送                          |
-| 异常数据拦截与 NACK 反馈                               | ✅ 已实现   | [TopicController.java:71-99](backend/src/main/java/com/cde/controller/TopicController.java#L71-L99) convertPayload 中格式转换失败时抛出 BusinessException(HttpStatus.BAD\_REQUEST)，前端收到 400 响应；[AuditServiceImpl.java:81-86](backend/src/main/java/com/cde/service/impl/AuditServiceImpl.java#L81-L86) ACL deny 事件写入审计日志 |
+| 异常数据拦截与 NACK 反馈                               | ✅ 已实现   | [TopicController.java](backend/src/main/java/com/cde/controller/TopicController.java) convertPayload 中格式转换失败时抛出 BusinessException(HttpStatus.BAD\_REQUEST)，前端收到 400 响应；JSON Schema 校验失败只记录 `json_schema_validate_fail` 审计日志，不阻断 MQTT 发布；[AuditServiceImpl.java](backend/src/main/java/com/cde/service/impl/AuditServiceImpl.java) 写入审计日志 |
 
 #### 3. 传输保障与弱网优化
 
@@ -294,7 +294,7 @@ cross-domain-exchange/
 | -------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 异构数据格式转换（XML/JSON/TEXT）          | ✅ 已实现 | [XmlDataConverter.java](backend/src/main/java/com/cde/service/converter/XmlDataConverter.java) XML→JSON；[TopicController.java:71-99](backend/src/main/java/com/cde/controller/TopicController.java#L71-L99) 拦截器动态转换 |
 | 二进制自定义协议转换                       | ❌ 未实现 | 未实现二进制协议解析器                                                                                                                                                                                                         |
-| JSON Schema 校验                   | ❌ 未实现 | 数据格式转换后未进行 Schema 校验                                                                                                                                                                                                |
+| JSON Schema 校验                   | ⚠️ 部分实现 | [JsonSchemaValidationServiceImpl.java](backend/src/main/java/com/cde/service/impl/JsonSchemaValidationServiceImpl.java) 对已配置主题执行必填字段校验；校验失败会记录 `json_schema_validate_fail` 审计日志，但发布流程继续成功 |
 | 安全域树形管理（多级域自关联）                  | ✅ 已实现 | [SysDomain.java](backend/src/main/java/com/cde/entity/SysDomain.java) parentId 自关联；[DomainController.java](backend/src/main/java/com/cde/controller/DomainController.java) 支持 CRUD                                  |
 | 用户/角色管理（role\_type + client\_id） | ✅ 已实现 | [ClientController.java](backend/src/main/java/com/cde/controller/ClientController.java) 用户 CRUD；[SysUser.java](backend/src/main/java/com/cde/entity/SysUser.java) 字段完整                                              |
 | 容器化部署（Docker 一键部署）               | ✅ 已实现 | [dockerrun/docker-compose.yml](dockerrun/docker-compose.yml) 编排 EMQX+Backend+Frontend；从 GitHub Release 下载编译产物后一键启动                                                                                                  |
@@ -323,4 +323,3 @@ cross-domain-exchange/
 
 - [API 接口文档](docs/api.md)
 - [数据库迁移：H2 → MySQL](docs/migration-to-mysql.md)
-
