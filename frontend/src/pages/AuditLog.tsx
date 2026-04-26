@@ -48,7 +48,7 @@ const AuditLog: React.FC = () => {
 
   const actionTypeColors: Record<string, string> = {
     connect: 'green', disconnect: 'default',
-    publish: 'blue', publish_fail: 'red',
+    publish: 'blue', publish_fail: 'red', format_convert_fail: 'red',
     subscribe: 'cyan', unsubscribe: 'default',
     acl_deny: 'red', acl_allow: 'green',
     deliver: 'purple',
@@ -58,7 +58,7 @@ const AuditLog: React.FC = () => {
 
   const actionTypeLabels: Record<string, string> = {
     connect: '客户端连接', disconnect: '客户端断开',
-    publish: '消息发布', publish_fail: '发布失败',
+    publish: '消息发布', publish_fail: '发布失败', format_convert_fail: '发布失败',
     subscribe: '主题订阅', unsubscribe: '取消订阅',
     acl_deny: '权限拒绝', acl_allow: 'ACL通过',
     deliver: '消息投递',
@@ -67,7 +67,7 @@ const AuditLog: React.FC = () => {
   };
 
   const isDanger = (action: string) =>
-    ['acl_deny', 'publish_fail'].includes(action);
+    ['acl_deny', 'publish_fail', 'format_convert_fail'].includes(action);
 
   const columns = [
     { title: '时间', dataIndex: 'actionTime', width: 170,

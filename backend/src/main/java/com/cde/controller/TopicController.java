@@ -3,6 +3,7 @@ package com.cde.controller;
 import com.cde.dto.ApiResponse;
 import com.cde.dto.DomainTreeNode;
 import com.cde.exception.BusinessException;
+import com.cde.service.AuditService;
 import com.cde.service.TopicService;
 import com.cde.service.converter.DataConverter;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -26,6 +27,7 @@ public class TopicController {
     private final TopicService topicService;
     private final List<DataConverter> dataConverters;
     private final ObjectMapper objectMapper;
+    private final AuditService auditService;
 
     @GetMapping("/tree")
     public ApiResponse<List<DomainTreeNode>> getTopicTree() {
@@ -44,11 +46,26 @@ public class TopicController {
     ) {
         String username = auth.getName();
         String token = authHeader.replace("Bearer ", "");
-        String actualFormat = resolveActualFormat(format, payload);
-        String convertedPayload = convertPayload(payload, actualFormat);
+        String convertedPayload;
+        try {
+            String actualFormat = resolveActualFormat(format, payload);
+            convertedPayload = convertPayload(payload, actualFormat);
+        } catch (BusinessException e) {
+            recordFormatConvertFailure(username, topic, format, e.getMessage());
+            throw e;
+        } catch (RuntimeException e) {
+            recordFormatConvertFailure(username, topic, format, e.getMessage());
+            throw new BusinessException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
 
         topicService.publishMsg(topic, convertedPayload, qos, retain, username, token);
         return ApiResponse.ok("消息发布成功", null);
+    }
+
+    private void recordFormatConvertFailure(String username, String topic, String format, String reason) {
+        auditService.log(username, "format_convert_fail",
+                "数据格式转换失败: topic=" + topic + ", format=" + format + ", reason=" + reason,
+                "0.0.0.0");
     }
 
     private String resolveActualFormat(String format, String payload) {
