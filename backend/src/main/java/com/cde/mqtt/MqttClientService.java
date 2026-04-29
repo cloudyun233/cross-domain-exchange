@@ -38,10 +38,29 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 
 /**
- * MQTT 客户端封装 —— 精简重写版
+ * MQTT 客户端封装 —— 基于用户维度的连接管理服务
  *
- * 核心原则：只使用 publishes(MqttGlobalPublishFilter.ALL, ...) 全局回调，
- *           不再在 subscribe 时注册 per-subscription callback，彻底消除双回调冲突。
+ * <h3>核心设计</h3>
+ * <ul>
+ *   <li><b>每用户独立上下文</b>：通过 {@code ConcurrentHashMap<String, UserMqttContext>} 维护每个用户的
+ *       MQTT 客户端、消息监听器和订阅记忆，用户之间完全隔离。</li>
+ *   <li><b>TLS 优先 + TCP 降级</b>：连接时先尝试 TLS(8883)，超时或失败后自动降级到 TCP(1883)，
+ *       兼顾安全性与可用性。</li>
+ *   <li><b>全局发布回调</b>：仅使用 {@code publishes(MqttGlobalPublishFilter.ALL, ...)} 注册唯一全局回调，
+ *       不在 subscribe 时注册 per-subscription callback，彻底消除双回调冲突。</li>
+ *   <li><b>自动重连</b>：HiveMQ 客户端内置 {@code automaticReconnectWithDefaultConfig()}，
+ *       网络断开后自动重连 Broker。</li>
+ *   <li><b>会话持久化</b>：{@code cleanStart=false} + {@code sessionExpiryInterval=3600s}，
+ *       断连后 Broker 保留会话 1 小时，重连时可恢复离线期间的消息。</li>
+ *   <li><b>遗嘱消息</b>：连接时注册 Will Message 到 {@code will/{clientId}} 主题，
+ *       异常断连时 Broker 自动发布，用于离线检测。</li>
+ * </ul>
+ *
+ * <h3>线程安全</h3>
+ * <p>本类本身无状态，所有可变状态封装在 {@link UserMqttContext} 中。
+ * {@code userContexts} 使用 {@link ConcurrentHashMap} 保证并发安全；
+ * {@code UserMqttContext} 的 {@code messageListener} 和 {@code connected} 字段使用 {@code volatile}
+ * 保证跨线程可见性；{@code subscribedTopics} 使用 {@link ConcurrentHashMap} 保证并发读写安全。</p>
  */
 @Slf4j
 @Component
@@ -74,19 +93,29 @@ public class MqttClientService {
     @Value("${mqtt.disconnect.timeout-seconds:5}")
     private int disconnectTimeoutSeconds;
 
-    /** 每个用户对应一个 MQTT 上下文 */
+    /** 每个用户对应一个 MQTT 上下文，key 为 username */
     private final Map<String, UserMqttContext> userContexts = new ConcurrentHashMap<>();
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  用户上下文
     // ═══════════════════════════════════════════════════════════════════════════
 
+    /**
+     * 单用户的 MQTT 连接上下文，封装该用户的所有运行时状态。
+     *
+     * <p>线程安全说明：{@code messageListener} 和 {@code connected} 标记为 {@code volatile}，
+     * 因为它们会被 HiveMQ 的回调线程写入、被业务线程读取，需要保证跨线程可见性。
+     * {@code subscribedTopics} 使用 {@link ConcurrentHashMap}，支持并发的订阅/取消订阅操作。
+     * {@code client} 本身是 HiveMQ 的异步客户端，内部已保证线程安全。</p>
+     */
     private static class UserMqttContext {
+        /** HiveMQ MQTT 5.0 异步客户端实例 */
         final Mqtt5AsyncClient client;
-        /** 全局消息监听器（收到消息后推 SSE） */
+        /** 全局消息监听器（收到消息后推 SSE）。volatile 保证回调线程写入后业务线程立即可见 */
         volatile BiConsumer<String, String> messageListener;
-        /** 已订阅的主题 → QoS（记忆用，断开后保留） */
+        /** 已订阅的主题 → QoS 映射。作为本地订阅记忆，断连后保留，重连时用于自动恢复订阅 */
         final Map<String, Integer> subscribedTopics = new ConcurrentHashMap<>();
+        /** 连接状态标记。volatile 保证 HiveMQ 回调线程与业务线程之间的可见性 */
         volatile boolean connected;
 
         UserMqttContext(Mqtt5AsyncClient client) {
@@ -108,11 +137,17 @@ public class MqttClientService {
 
     /**
      * 连接 MQTT（订阅场景用）。
-     * - cleanStart=false, sessionExpiryInterval=3600
-     * - 注册唯一全局 publishes() 回调
-     * - 自动重新订阅所有已记忆的主题
      *
-     * @param messageListener 收到消息后的回调（topic, payload），可为 null
+     * <p>连接策略：TLS 优先，失败后降级到 TCP。若用户已有活跃连接则复用（仅更新 listener），
+     * 若旧连接已断开则先清理旧客户端，并将旧上下文的订阅记忆迁移到新上下文，
+     * 连接成功后自动重新订阅所有已记忆的主题。</p>
+     *
+     * <p>会话持久化参数：{@code cleanStart=false} + {@code sessionExpiryInterval=3600s}，
+     * Broker 保留会话状态，重连后可恢复离线期间的 QoS 1/2 消息。</p>
+     *
+     * @param username       用户名，同时作为 MQTT 认证用户名
+     * @param jwtToken       JWT 令牌，作为 MQTT 认证密码
+     * @param messageListener 收到消息后的回调 (topic, payload)，可为 null（纯发布场景）
      */
     public void connectForUser(String username, String jwtToken, BiConsumer<String, String> messageListener) {
         log.info("[MQTT] connectForUser 开始: username={}", username);
@@ -185,6 +220,10 @@ public class MqttClientService {
 
     /**
      * 订阅主题（仅向 broker 发送 SUBSCRIBE 报文，不注册 per-subscription callback）。
+     *
+     * <p>订阅成功后将主题记入本地 {@code subscribedTopics} 映射，用于断连重连后自动恢复。
+     * 超时时间由 {@code mqtt.subscribe.timeout-seconds} 控制，超时或 Broker 返回错误码时
+     * 通过 {@link #mapSubscribeException} 映射为 {@link BusinessException}。</p>
      */
     public void subscribeForUser(String username, String topic, int qos) {
         UserMqttContext ctx = requireConnected(username);
@@ -235,6 +274,10 @@ public class MqttClientService {
 
     /**
      * 发布消息（发布场景用）。
+     *
+     * <p>超时时间由 {@code mqtt.publish.timeout-seconds} 控制。发布失败时通过
+     * {@link #mapPublishException} 将 MQTT 5.0 PUBACK 原因码映射为对应的
+     * {@link BusinessException}（如 403 无权限、400 主题非法等）。</p>
      */
     public void publishForUser(String username, String topic, String payload, int qos, boolean retain) {
         UserMqttContext ctx = requireConnected(username);
@@ -354,6 +397,21 @@ public class MqttClientService {
     //  内部方法
     // ═══════════════════════════════════════════════════════════════════════════
 
+    /**
+     * 执行 MQTT 5.0 连接。
+     *
+     * <p>关键连接参数说明：</p>
+     * <ul>
+     *   <li>{@code cleanStart=false} —— 不清除已有会话，Broker 保留该 clientId 的订阅和离线消息</li>
+     *   <li>{@code sessionExpiryInterval=3600} —— 会话在断连后保留 3600 秒（1 小时），
+     *       期间重连可恢复 QoS 1/2 的离线消息</li>
+     *   <li>{@code keepAlive=60} —— 心跳间隔 60 秒，超过 1.5 倍时间无响应则 Broker 判定断连</li>
+     *   <li>{@code willPublish} —— 遗嘱消息，异常断连时 Broker 自动发布到 {@code will/{clientId}}，
+     *       payload 包含 clientId 和 offline 状态，retain=true 确保新订阅者也能收到</li>
+     * </ul>
+     *
+     * @param useTls true 使用 TLS 端口，false 使用 TCP 端口
+     */
     private UserMqttContext doConnect(
             String username, String jwtToken, String clientId,
             BiConsumer<String, String> messageListener, boolean useTls
@@ -396,7 +454,11 @@ public class MqttClientService {
 
     /**
      * 注册唯一全局 publishes() 回调。
-     * 所有收到的消息（实时 + offline）都走这条路径。
+     *
+     * <p>所有收到的消息（实时推送 + 离线恢复）都走这条唯一路径。
+     * 采用全局回调而非 per-subscription 回调的原因：HiveMQ 客户端在同时注册
+     * 全局回调和 per-subscription 回调时，同一条消息会触发两次回调（双回调冲突），
+     * 导致消息重复处理。仅使用全局回调可彻底消除此问题。</p>
      */
     private void setupGlobalPublishCallback(String username, UserMqttContext ctx) {
         ctx.client.publishes(MqttGlobalPublishFilter.ALL, publish -> {
@@ -426,6 +488,10 @@ public class MqttClientService {
 
     /**
      * 将旧 context 的订阅记忆迁移到新 context。
+     *
+     * <p>重连时会创建新的 {@link UserMqttContext}，此方法将旧上下文中保存的
+     * {@code subscribedTopics} 复制到新上下文，确保重连后 {@link #resubscribeAll}
+     * 能恢复所有历史订阅。</p>
      */
     private void preserveSubscriptions(UserMqttContext oldCtx, UserMqttContext newCtx) {
         if (oldCtx != null && !oldCtx.subscribedTopics.isEmpty()) {
@@ -436,6 +502,11 @@ public class MqttClientService {
 
     /**
      * 重连后自动重新订阅所有已记忆的主题。
+     *
+     * <p>遍历 {@code subscribedTopics} 中的所有主题，逐个向 Broker 发送 SUBSCRIBE 报文。
+     * 单个主题恢复失败不影响其余主题的恢复（仅记录错误日志）。
+     * 由于 {@code cleanStart=false}，Broker 端可能已保留部分订阅，
+     * 但本地仍完整重发以确保一致性。</p>
      */
     private void resubscribeAll(String username, UserMqttContext ctx) {
         if (ctx.subscribedTopics.isEmpty()) {
@@ -479,6 +550,16 @@ public class MqttClientService {
         return user != null ? user.getClientId() : username;
     }
 
+    /**
+     * 构建 TLS 模式的 MQTT 客户端。
+     *
+     * <p>TLS 配置策略：当 {@code insecureTrustAll=true}（开发环境）时，
+     * 使用 {@link InsecureTrustManagerFactory} 跳过证书验证并禁用主机名校验，
+     * 方便自签名证书环境调试；生产环境应设为 false，使用 JVM 默认信任链。</p>
+     *
+     * <p>自动重连：调用 {@code automaticReconnectWithDefaultConfig()} 启用 HiveMQ 内置的
+     * 指数退避重连机制，网络中断后自动恢复连接。</p>
+     */
     private Mqtt5AsyncClient buildTlsClient(String clientId) {
         var builder = MqttClient.builder()
                 .useMqttVersion5()
@@ -498,6 +579,12 @@ public class MqttClientService {
         return builder.automaticReconnectWithDefaultConfig().buildAsync();
     }
 
+    /**
+     * 构建 TCP 模式的 MQTT 客户端（TLS 降级方案）。
+     *
+     * <p>无 TLS 加密，仅作为 TLS 不可用时的降级选择。
+     * 同样启用自动重连机制。</p>
+     */
     private Mqtt5AsyncClient buildTcpClient(String clientId) {
         return MqttClient.builder()
                 .useMqttVersion5()
@@ -522,9 +609,21 @@ public class MqttClientService {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    //  异常映射（与旧版一致）
+    //  异常映射：将 MQTT 5.0 原因码转换为业务异常
     // ═══════════════════════════════════════════════════════════════════════════
 
+    /**
+     * 将发布异常映射为 {@link BusinessException}。
+     *
+     * <p>优先从异常链中提取 {@link Mqtt5PubAckException}，根据 MQTT 5.0 PUBACK 原因码映射：
+     * <ul>
+     *   <li>{@code NOT_AUTHORIZED} → 403 无权发布</li>
+     *   <li>{@code TOPIC_NAME_INVALID} → 400 主题不合法</li>
+     *   <li>{@code PAYLOAD_FORMAT_INVALID} → 400 消息格式不合法</li>
+     *   <li>其他原因码中若 reasonString 包含 "not authorized" 或 "acl" → 403</li>
+     * </ul>
+     * 若无法提取 PUBACK 异常，则回退到根异常消息匹配，默认返回 502 Bad Gateway。</p>
+     */
     private RuntimeException mapPublishException(String topic, Exception e) {
         Mqtt5PubAckException pubAckException = findCause(e, Mqtt5PubAckException.class);
         if (pubAckException != null) {
@@ -551,6 +650,17 @@ public class MqttClientService {
         return new BusinessException(HttpStatus.BAD_GATEWAY, "消息发布失败: " + root.getMessage());
     }
 
+    /**
+     * 将订阅异常映射为 {@link BusinessException}。
+     *
+     * <p>从异常链中提取 {@link Mqtt5SubAckException}，根据 MQTT 5.0 SUBACK 原因码映射：
+     * <ul>
+     *   <li>{@code NOT_AUTHORIZED} → 403 无权订阅</li>
+     *   <li>{@code TOPIC_FILTER_INVALID} → 400 主题过滤器不合法</li>
+     *   <li>其他原因码 → 400 附带详细原因</li>
+     * </ul>
+     * 若无法提取 SUBACK 异常，默认返回 502 Bad Gateway。</p>
+     */
     private RuntimeException mapSubscribeException(String topic, Exception e) {
         Mqtt5SubAckException subAckException = findCause(e, Mqtt5SubAckException.class);
         if (subAckException != null) {

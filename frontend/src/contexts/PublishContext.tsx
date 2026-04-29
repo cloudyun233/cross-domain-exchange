@@ -1,5 +1,15 @@
+/**
+ * 发布状态上下文 —— 管理数据发布页的表单状态与发布历史
+ *
+ * 核心设计：
+ * - 使用 sessionStorage 持久化表单状态（主题、QoS、格式、消息体、历史），
+ *   刷新页面不丢失，关闭标签页自动清除
+ * - 切换消息格式时自动填充对应的示例载荷模板
+ * - 发布历史保留最近 20 条，用于页面内展示
+ */
 import React, { ReactNode, createContext, useContext, useState } from 'react';
 
+/** 安全域树节点结构，对应后端 /domains/tree 返回的树形数据 */
 interface DomainTreeNode {
   key: string;
   title: string;
@@ -11,6 +21,7 @@ interface DomainTreeNode {
   children?: DomainTreeNode[];
 }
 
+/** 发布历史记录项 */
 export interface PublishHistoryItem {
   topic: string;
   qos: number;
@@ -42,6 +53,7 @@ const PublishContext = createContext<PublishContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'publish_state';
 
+/** 从 sessionStorage 读取已保存的发布状态，解析失败返回空对象 */
 const loadFromStorage = (): Partial<PublishContextType> => {
   try {
     const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -54,6 +66,7 @@ const loadFromStorage = (): Partial<PublishContextType> => {
   return {};
 };
 
+/** 将发布状态增量写入 sessionStorage */
 const saveToStorage = (state: Partial<PublishContextType>) => {
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -62,6 +75,7 @@ const saveToStorage = (state: Partial<PublishContextType>) => {
   }
 };
 
+/** 结构化消息示例载荷（JSON 格式，模拟跨域医疗数据） */
 const STRUCTURED_SAMPLE = `{
   "patientId": "P20260401001",
   "name": "张三",
@@ -69,6 +83,7 @@ const STRUCTURED_SAMPLE = `{
   "timestamp": "2026-04-01T08:00:00"
 }`;
 
+/** 纯文本消息示例载荷 */
 const PLAIN_TEXT_SAMPLE = '普通文本消息：西南医院已完成病历脱敏';
 
 export const PublishProvider: React.FC<{ children: ReactNode }> = ({ children }) => {

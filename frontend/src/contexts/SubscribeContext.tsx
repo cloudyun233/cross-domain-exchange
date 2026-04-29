@@ -1,3 +1,19 @@
+/**
+ * 订阅上下文 —— SSE + MQTT 双通道实时消息接收
+ *
+ * 架构设计：
+ * - SSE 长连接：登录后立即建立，用于接收后端推送的 MQTT 消息，断线自动重连
+ * - MQTT 连接：用户主动触发，后端代理连接 EMQX，cleanStart=false 支持离线消息补发
+ * - 消息缓冲：保留最近 100 条消息，新消息在前
+ *
+ * SSE 重连策略：
+ * - 指数退避：基础延迟 1500ms，每次重连延迟翻倍，最多重试 5 次
+ * - 超过最大重试次数后提示用户刷新页面
+ *
+ * 生命周期：
+ * - 登录 → 建立 SSE + 开始轮询会话状态
+ * - 退出 → 关闭 SSE、清理所有状态
+ */
 import React, { ReactNode, createContext, useContext, useEffect, useRef, useState } from 'react';
 import { EventSourcePolyfill } from 'event-source-polyfill';
 import { message } from 'antd';
@@ -5,8 +21,11 @@ import { api } from '../services/api';
 import { useAuth } from './AuthContext';
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
+/** SSE 最大重连次数，超过后停止重连并提示用户 */
 const SSE_MAX_RECONNECT = 5;
+/** SSE 重连基础延迟（毫秒），实际延迟 = SSE_BASE_DELAY_MS * 2^重试次数 */
 const SSE_BASE_DELAY_MS = 1500;
+/** 会话状态轮询间隔（毫秒） */
 const STATUS_POLL_MS = 5000;
 
 // ─── 类型 ────────────────────────────────────────────────────────────────────
@@ -118,6 +137,12 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     } catch { applySessionStatus(null); }
   };
 
+  /**
+   * 推送消息到缓冲区：
+   * - 尝试解析 JSON，若包含 _meta 字段则提取元数据（格式转换来源等）
+   * - 解析失败则视为纯文本消息
+   * - 保留最近 100 条，新消息在前
+   */
   const pushMessage = (rawPayload: string, msgTopic: string, timestamp?: number) => {
     let payloadText = rawPayload;
     let meta: ReceivedMessage['meta'];
@@ -136,12 +161,20 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     if (sseReconnTimerRef.current) { clearTimeout(sseReconnTimerRef.current); sseReconnTimerRef.current = null; }
   };
 
+  /** 关闭 SSE 连接并清理重连定时器，将连接状态置为 false */
   const closeSse = () => {
     if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
     clearSseReconnTimer();
     updateSseConnected(false);
   };
 
+  /**
+   * 建立 SSE 连接：
+   * - 先关闭已有连接，防止重复连接
+   * - 监听 connected/message/error 三类事件
+   * - 连接成功后重置重连计数并刷新会话状态
+   * - 连接断开时若 shouldSseReconn 为 true 则触发重连调度
+   */
   const openSse = () => {
     closeSse();
     console.info('[SSE] 建立 SSE 连接...');
@@ -178,6 +211,11 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     };
   };
 
+  /**
+   * 确保 SSE 连接已建立，若未连接则发起连接并等待
+   * - 使用 Promise + 等待队列模式，3 秒超时后拒绝
+   * - 适用于 MQTT 连接/订阅等需要 SSE 通道就绪的前置操作
+   */
   const ensureSseConnected = async () => {
     if (sseConnectedRef.current) return;
     const connectedPromise = new Promise<void>((resolve, reject) => {
@@ -195,6 +233,12 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     await connectedPromise;
   };
 
+  /**
+   * 调度 SSE 重连（指数退避）：
+   * - 延迟 = SSE_BASE_DELAY_MS * 2^已重试次数
+   * - 超过 SSE_MAX_RECONNECT 后停止重连并提示用户
+   * - 每次重连前清理旧的重连定时器
+   */
   const scheduleSseReconn = async () => {
     if (!shouldSseReconnRef.current) return;
     const attempts = sseReconnAttemptsRef.current;
@@ -296,6 +340,11 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   // ── 生命周期 ──────────────────────────────────────────────────────────────
 
+  /**
+   * 认证状态变化时的生命周期管理：
+   * - 登录：建立 SSE 持久连接 + 启动会话状态轮询
+   * - 退出：关闭 SSE、清理重连标记、清空消息和订阅状态
+   */
   useEffect(() => {
     if (!isAuthenticated) {
       // 退出登录：关闭一切

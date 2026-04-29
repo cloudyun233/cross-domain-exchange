@@ -1,3 +1,11 @@
+/**
+ * 登录页 —— 用户名密码表单 + 演示账号展示 + 角色化登录后重定向
+ *
+ * 登录后跳转逻辑：
+ * - 管理员 → /dashboard
+ * - 普通用户 → /publish
+ * - 登录态仅在当前标签页有效（sessionStorage 机制）
+ */
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, Form, Input, Space, Typography, message } from 'antd';

@@ -1,3 +1,12 @@
+/**
+ * 审计日志查询页 —— 事件检索 + 筛选 + PDF 导出 + 危险行高亮
+ *
+ * 功能说明：
+ * - 支持按客户端 ID 和操作类型筛选审计记录
+ * - 分页展示，每页 20 条
+ * - 危险操作（权限拒绝、发布失败）行高亮 + 警告图标
+ * - 支持导出当前筛选条件下的 PDF 报告
+ */
 import React, { useEffect, useState } from 'react';
 import { Card, Table, Tag, Typography, Space, Select, Button, Input, message } from 'antd';
 import { DownloadOutlined, ReloadOutlined, WarningOutlined } from '@ant-design/icons';
@@ -46,6 +55,7 @@ const AuditLog: React.FC = () => {
     }
   };
 
+  /** 操作类型 → Tag 颜色映射，失败/拒绝类用红色，成功类用绿色/蓝色 */
   const actionTypeColors: Record<string, string> = {
     connect: 'green', disconnect: 'default',
     publish: 'blue', publish_fail: 'red', format_convert_fail: 'red',
@@ -56,6 +66,7 @@ const AuditLog: React.FC = () => {
     subscribe_close: 'default',
   };
 
+  /** 操作类型 → 中文标签映射，用于表格展示和筛选下拉 */
   const actionTypeLabels: Record<string, string> = {
     connect: '客户端连接', disconnect: '客户端断开',
     publish: '消息发布', publish_fail: '发布失败', format_convert_fail: '发布失败',
@@ -66,6 +77,7 @@ const AuditLog: React.FC = () => {
     subscribe_close: '关闭会话',
   };
 
+  /** 判断操作是否属于危险类型（权限拒绝、发布失败），用于行高亮和警告图标 */
   const isDanger = (action: string) =>
     ['acl_deny', 'publish_fail', 'format_convert_fail'].includes(action);
 

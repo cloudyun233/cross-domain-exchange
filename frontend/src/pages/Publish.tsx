@@ -1,3 +1,16 @@
+/**
+ * 数据发布页 —— 域树选择 + 消息编辑器 + 格式/QoS/Retain 配置 + 发布历史
+ *
+ * 页面布局：
+ * - 左栏：安全域树形选择器，选中叶节点后自动填充发布主题
+ * - 右栏：消息内容编辑、QoS/格式/Retain 选项、发布按钮、最近 5 条发布历史
+ *
+ * 发布流程：
+ * 1. 从域树选择目标域 → 自动填充 topicPath
+ * 2. 编辑消息内容（结构化 JSON 或纯文本）
+ * 3. 选择 QoS 等级和是否 Retain
+ * 4. 点击发布 → 调用后端 API → 记录到发布历史
+ */
 import React, { useEffect, useState } from 'react';
 import { Button, Card, Col, Input, Radio, Row, Space, Tag, Tree, Typography, message, Checkbox } from 'antd';
 import { SendOutlined } from '@ant-design/icons';
@@ -51,6 +64,13 @@ const Publish: React.FC = () => {
     });
   }, []);
 
+  /**
+   * 发布消息处理：
+   * 1. 校验主题和消息内容
+   * 2. 调用 api.publish 发送到后端
+   * 3. QoS 0 时额外提示"无确认回执"，因为 fire-and-forget 不保证送达
+   * 4. 无论成功失败均记录到发布历史
+   */
   const handlePublish = async () => {
     if (!selectedTopic) {
       message.warning('请先选择目标域');

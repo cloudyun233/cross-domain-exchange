@@ -102,6 +102,12 @@ public class AuthServiceImpl implements AuthService {
         };
     }
 
+    /**
+     * 构建域路径编码
+     *
+     * <p>从用户所属域向上递归遍历父域，拼接编码路径。
+     * 例如domainId指向"民政"域，其父域为"政务"，则返回"gov/minzheng"。</p>
+     */
     private String buildDomainCode(Long domainId) {
         if (domainId == null) {
             return "all";
@@ -109,6 +115,12 @@ public class AuthServiceImpl implements AuthService {
         return String.join("/", loadDomainSegments(domainId, true));
     }
 
+    /**
+     * 构建域路径名称
+     *
+     * <p>与buildDomainCode逻辑相同，但拼接的是中文名称。
+     * 例如返回"政务 / 民政"。</p>
+     */
     private String buildDomainName(Long domainId) {
         if (domainId == null) {
             return "全域";
@@ -116,6 +128,12 @@ public class AuthServiceImpl implements AuthService {
         return String.join(" / ", loadDomainSegments(domainId, false));
     }
 
+    /**
+     * 向上遍历域层级，收集编码或名称片段
+     *
+     * <p>从当前domainId开始，逐级查询parentId直到根域（parentId=null），
+     * 将每级片段插入列表头部以保证从根到叶的顺序。</p>
+     */
     private List<String> loadDomainSegments(Long domainId, boolean useCode) {
         List<String> segments = new ArrayList<>();
         Long currentId = domainId;

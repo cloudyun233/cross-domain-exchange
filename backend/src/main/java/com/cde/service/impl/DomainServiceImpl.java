@@ -18,6 +18,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+/**
+ * 安全域服务实现
+ *
+ * <p>树构建算法：筛选启用域(status=1) → 按parentId分组 → 递归buildNode构建树形结构。
+ * 删除操作执行安全检查：存在子域或关联用户时抛出BusinessException拒绝删除。</p>
+ */
 @Service
 @RequiredArgsConstructor
 public class DomainServiceImpl implements DomainService {
@@ -30,6 +36,13 @@ public class DomainServiceImpl implements DomainService {
         return domainMapper.selectList(new LambdaQueryWrapper<SysDomain>().orderByAsc(SysDomain::getId));
     }
 
+    /**
+     * 构建安全域树形结构
+     *
+     * <p>根节点为虚拟节点"跨域交换"（key=cross_domain），其children为所有顶级域。
+     * 每个节点携带topicPath（如cross_domain/gov/minzheng）和subscribeTopic（叶节点精确匹配，
+     * 非叶节点通配符匹配如cross_domain/gov/#）。</p>
+     */
     @Override
     public List<DomainTreeNode> buildDomainTree() {
         List<SysDomain> domains = listAll().stream()
@@ -68,6 +81,13 @@ public class DomainServiceImpl implements DomainService {
         return List.of(root);
     }
 
+    /**
+     * 递归构建域树节点
+     *
+     * <p>codePath和namePath在递归过程中逐级累积：
+     * 每进入子域，codePath追加"/子域编码"，namePath追加" / 子域名称"，
+     * 形成从根到当前节点的完整路径。</p>
+     */
     private DomainTreeNode buildNode(
             SysDomain domain,
             Map<Long, List<SysDomain>> childrenByParentId,
@@ -76,6 +96,7 @@ public class DomainServiceImpl implements DomainService {
     ) {
         List<DomainTreeNode> children = new ArrayList<>();
         for (SysDomain child : childrenByParentId.getOrDefault(domain.getId(), List.of())) {
+            // 递归时累加路径：父路径 + "/" + 子域编码/名称
             children.add(buildNode(
                     child,
                     childrenByParentId,

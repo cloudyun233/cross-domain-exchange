@@ -1,3 +1,15 @@
+/**
+ * 主布局组件 —— 可折叠侧边栏 + 角色化菜单 + 用户信息下拉
+ *
+ * 布局结构：
+ * - Sider：品牌标识 + 角色化导航菜单
+ * - Header：折叠按钮 + 角色标签 + 域标签 + 用户下拉（退出登录）
+ * - Content：通过 <Outlet /> 渲染子路由页面
+ *
+ * 菜单策略：
+ * - 普通用户（producer/consumer）：仅显示"数据发布"和"数据订阅"
+ * - 管理员（admin）：额外显示监控大盘、安全域管理、用户管理、ACL 规则、审计日志、弱网模拟
+ */
 import React, { useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button, Dropdown, Layout, Menu, Space, Tag, Typography } from 'antd';
@@ -27,11 +39,13 @@ const MainLayout: React.FC = () => {
   const location = useLocation();
   const isAdmin = user?.roleType?.toUpperCase() === 'ADMIN';
 
+  /** 通用菜单项：所有角色可见 */
   const commonMenuItems = [
     { key: '/publish', icon: <SendOutlined />, label: '数据发布' },
     { key: '/subscribe', icon: <CloudDownloadOutlined />, label: '数据订阅' },
   ];
 
+  /** 管理员菜单项：在通用菜单基础上增加管理功能 */
   const adminMenuItems = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: '监控大盘' },
     ...commonMenuItems,

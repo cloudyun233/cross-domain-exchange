@@ -1,3 +1,13 @@
+/**
+ * 根组件 —— 路由配置、Ant Design 主题定制与 Context Provider 嵌套
+ *
+ * 设计要点：
+ * - ConfigProvider 包裹最外层，统一中文化与 Apple 风格设计令牌
+ * - Provider 嵌套顺序：AuthProvider → PublishProvider → SubscribeProvider，
+ *   保证 SubscribeContext 可访问 AuthContext 的登录状态
+ * - 管理类路由（dashboard/domains/clients/acl/audit/network）均通过
+ *   ProtectedRoute adminOnly 进行角色守卫
+ */
 import React from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
@@ -18,6 +28,12 @@ import AclManage from './pages/AclManage';
 import AuditLog from './pages/AuditLog';
 import NetworkSimulate from './pages/NetworkSimulate';
 
+/**
+ * 默认路由：根据用户角色重定向到对应首页
+ * - 未登录 → /login
+ * - 管理员 → /dashboard（监控大盘）
+ * - 普通用户 → /publish（数据发布）
+ */
 const DefaultRoute: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
 

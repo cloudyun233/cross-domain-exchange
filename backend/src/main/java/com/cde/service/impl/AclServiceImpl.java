@@ -13,7 +13,10 @@ import java.util.List;
 
 /**
  * ACL服务实现
- * CRUD操作后自动实时推送到EMQX (论文3.6.1: ACL热更新)
+ *
+ * <p>采用"CRUD→推送"模式：create时单条推送（pushAclRule），update/delete时触发全量同步（syncToEmqx）。
+ * 全量同步而非增量同步，避免EMQX端规则与数据库出现不一致。
+ * 注意：syncToEmqx非线程安全，若并发调用可能导致重复推送，当前由单线程Controller保证串行。</p>
  */
 @Slf4j
 @Service

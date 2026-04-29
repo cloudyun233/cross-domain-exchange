@@ -10,6 +10,16 @@ import java.io.InputStreamReader;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * 网络模拟 REST API
+ *
+ * <p>基于 Linux TC（Traffic Control）实现弱网模拟，仅限管理员访问，且仅在 Linux Docker 环境中可用。
+ * 支持配置延迟、丢包率和带宽限制，提供预设场景供前端快速选择。
+ * <ul>
+ *   <li>POST /api/network/simulate — 执行弱网模拟（通过 tc 命令配置网络参数）</li>
+ *   <li>GET  /api/network/presets  — 获取预设弱网场景列表</li>
+ * </ul>
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/network")
@@ -20,10 +30,18 @@ public class NetworkController {
 
     /**
      * 执行命令并返回输出，带超时控制
+     *
+     * <p>通过 ProcessBuilder 启动子进程执行 shell 命令，合并标准输出与错误输出。
+     * 若进程在指定时间内未完成则强制终止并抛出超时异常；非零退出码同样抛出异常。
+     *
+     * @param command        待执行的 shell 命令
+     * @param timeoutSeconds 超时秒数
+     * @return 命令的标准输出内容（已去除首尾空白）
+     * @throws Exception 命令执行超时或失败时抛出
      */
     private String executeCommand(String command, int timeoutSeconds) throws Exception {
         ProcessBuilder pb = new ProcessBuilder("sh", "-c", command);
-        pb.redirectErrorStream(true);
+        pb.redirectErrorStream(true); // 合并 stderr 到 stdout，便于统一读取
         Process process = pb.start();
 
         StringBuilder output = new StringBuilder();
@@ -49,7 +67,13 @@ public class NetworkController {
     }
 
     /**
-     * 自动检测网络接口（优先使用 eth0，其次是默认路由接口）
+     * 自动检测网络接口
+     *
+     * <p>检测策略：优先尝试 eth0（Docker 容器默认网卡），若不存在则通过
+     * "ip route show default" 命令获取默认路由接口名称。
+     * 所有检测方式均失败时回退到 eth0。
+     *
+     * @return 检测到的网络接口名称
      */
     private String detectNetworkInterface() {
         try {
@@ -75,6 +99,18 @@ public class NetworkController {
         return "eth0";
     }
 
+    /**
+     * 执行弱网模拟
+     *
+     * <p>通过 Linux TC 命令在指定网卡上配置网络参数（延迟、丢包、带宽限制）。
+     * 当所有参数均为 0 时，删除 TC 规则恢复无限制网络。
+     * 自动检测可用网卡，执行失败时返回提示（需在 Linux Docker 环境中运行）。
+     *
+     * @param delayMs       延迟毫秒数，0 表示不设置延迟
+     * @param lossPercent   丢包率百分比，0 表示不设置丢包
+     * @param bandwidthMbps 带宽限制 Mbps，0 表示不限制带宽
+     * @return 模拟结果描述
+     */
     @PostMapping("/simulate")
     public ApiResponse<String> simulate(
             @RequestParam(defaultValue = "0") int delayMs,
@@ -116,6 +152,13 @@ public class NetworkController {
         return String.format("自定义(延迟=%dms, 丢包=%d%%, 带宽=%dMbps)", delayMs, lossPercent, bandwidthMbps);
     }
 
+    /**
+     * 获取预设弱网场景列表
+     *
+     * <p>返回前端可选择的预设弱网场景，包含场景名称、网络参数和描述。
+     *
+     * @return 预设场景列表
+     */
     @GetMapping("/presets")
     public ApiResponse<Object> getPresets() {
         return ApiResponse.ok(java.util.List.of(

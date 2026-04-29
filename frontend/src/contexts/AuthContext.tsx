@@ -1,6 +1,16 @@
+/**
+ * 认证上下文 —— 管理用户登录态、JWT Token 与会话持久化
+ *
+ * 核心设计：
+ * - 使用 sessionStorage 持久化 token 和 user，刷新页面不丢失但关闭标签页即失效
+ * - 登录成功后通过 toUser() 将后端响应映射为前端 User 结构
+ * - token 变化时自动调用 /auth/me 刷新用户信息（跳过刚登录的那次，避免重复请求）
+ * - 退出时清理 sessionStorage 并通知后端关闭订阅会话
+ */
 import React, { ReactNode, createContext, useContext, useEffect, useRef, useState } from 'react';
 import { api } from '../services/api';
 
+/** 用户信息结构，对应后端 /auth/me 返回的用户字段 */
 interface User {
   username: string;
   roleType: string;
@@ -10,6 +20,7 @@ interface User {
   clientId: string;
 }
 
+/** 认证上下文接口 */
 interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -28,6 +39,10 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+/**
+ * 将后端返回的用户数据映射为前端 User 结构
+ * 后端返回的 payload 包含额外字段（如 token），此函数仅提取 UI 层所需字段
+ */
 function toUser(payload: any): User {
   return {
     username: payload.username,
@@ -47,6 +62,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('token'));
   const justLoggedInRef = useRef(false);
 
+  /** 将 token 和 user 同步写入 state 与 sessionStorage */
   const persistSession = (nextToken: string, nextUser: User) => {
     setToken(nextToken);
     setUser(nextUser);
@@ -78,6 +94,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return;
     }
 
+    // 刚登录时跳过刷新，因为 login() 已经拿到了最新用户信息
     if (justLoggedInRef.current) {
       justLoggedInRef.current = false;
       return;
@@ -85,6 +102,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     let cancelled = false;
 
+    // token 变化时（如页面刷新从 sessionStorage 恢复），向后端请求最新用户信息
     const refreshProfile = async () => {
       try {
         const result = await api.getCurrentUser();

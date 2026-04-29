@@ -1,3 +1,12 @@
+/**
+ * 用户/客户端管理页 —— 账号增删改查 + 角色-域校验
+ *
+ * 业务规则：
+ * - 管理员（admin）无需绑定安全域，domainId 置为 null
+ * - 生产者（producer）和消费者（consumer）必须绑定安全域
+ * - 新建用户时系统自动生成 clientId（格式：用户名_001）
+ * - 编辑模式下用户名不可修改，密码字段不显示
+ */
 import React, { useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
@@ -14,6 +23,10 @@ const ClientManage: React.FC = () => {
   const [form] = Form.useForm();
   const selectedRole = Form.useWatch('roleType', form);
 
+  /**
+   * 根据 domainId 向上遍历 parentId 链，拼接完整层级路径
+   * 无 domainId 时返回"全域"（管理员场景）
+   */
   const getDomainLabel = (domainId?: number | null): string => {
     if (!domainId) return '全域';
     const lookup = new Map(domains.map((item) => [item.id, item]));
@@ -43,6 +56,11 @@ const ClientManage: React.FC = () => {
     void fetchData();
   }, []);
 
+  /**
+   * 保存用户：
+   * - 管理员角色强制将 domainId 置为 null（管理员无域绑定）
+   * - 新建时传入 passwordHash 字段，编辑时不传
+   */
   const handleSave = async (values: any) => {
     const payload = {
       ...values,

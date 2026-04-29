@@ -1,3 +1,11 @@
+/**
+ * 管理员监控大盘 —— ECharts 实时图表 + 安全域拓扑图
+ *
+ * 功能模块：
+ * - 四项统计指标：Broker 连接数、消息接收/发送总数、JVM 内存
+ * - 消息流量折线图：5 秒自动刷新，展示接收/发送两条曲线
+ * - 跨域拓扑力导向图：以 EMQX Broker 为中心，展示安全域层级关系
+ */
 import React, { useEffect, useState } from 'react';
 import { Card, Col, Row, Statistic, Tag, Typography } from 'antd';
 import {
@@ -25,6 +33,7 @@ const Dashboard: React.FC = () => {
   const [msgStats, setMsgStats] = useState<any>({});
   const [domainTree, setDomainTree] = useState<DomainTreeNode[]>([]);
 
+  /** 获取大盘数据：并行请求系统指标和消息统计，5 秒轮询刷新 */
   const fetchDashboardData = async () => {
     try {
       const [metricsResp, messageResp] = await Promise.all([
@@ -167,6 +176,15 @@ const Dashboard: React.FC = () => {
   );
 };
 
+/**
+ * 构建安全域拓扑图 ECharts 配置（力导向布局）
+ *
+ * 布局策略：
+ * - 中心固定节点：EMQX Broker
+ * - 递归遍历域树，按深度分配颜色和节点大小
+ * - 使用 force 力导向布局，支持拖拽和缩放
+ * - 连线样式按深度区分：根域连线较粗，子域连线较细
+ */
 function buildTopologyOption(domainTree: DomainTreeNode[]) {
   const nodes: any[] = [{
     name: 'EMQX Broker',

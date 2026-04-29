@@ -30,7 +30,8 @@ import java.util.function.BiConsumer;
 @RequiredArgsConstructor
 public class SubscribeServiceImpl implements SubscribeService {
 
-    private static final long SSE_TIMEOUT_MS = 0L; // 永不超时
+    /** SSE超时设为0（永不超时），依赖15s心跳维持连接活性 */
+    private static final long SSE_TIMEOUT_MS = 0L;
 
     private final MqttClientService mqttClientService;
     private final AuditService auditService;
@@ -46,9 +47,10 @@ public class SubscribeServiceImpl implements SubscribeService {
     public SseEmitter openSse(String username) {
         log.info("[SSE] openSse: username={}", username);
 
-        // 先关闭旧 emitter
+        // 先关闭旧emitter，保证单用户单连接
         completeEmitter(username);
 
+        // 创建新emitter并注册生命周期回调，确保异常时从Map中移除避免内存泄漏
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
         userEmitters.put(username, emitter);
 
@@ -178,6 +180,7 @@ public class SubscribeServiceImpl implements SubscribeService {
     //  心跳
     // ═══════════════════════════════════════════════════════════════════════════
 
+    /** 15秒间隔SSE心跳，防止反向代理/负载均衡器因空闲超时断开连接 */
     @Scheduled(fixedDelay = 15000L)
     public void heartbeat() {
         userEmitters.forEach((username, emitter) -> {
@@ -203,8 +206,10 @@ public class SubscribeServiceImpl implements SubscribeService {
     }
 
     /**
-     * 创建 SSE 推送回调。
-     * MqttClientService 收到消息后调用此回调将消息推到前端。
+     * 创建SSE推送回调
+     *
+     * <p>消息转发流程：MQTT客户端收到消息 → 回调触发 → 通过SseEmitter推送至前端。
+     * 回调内获取当前用户的emitter，以SSE事件名"message"发送包含topic、payload、timestamp的JSON。</p>
      */
     private BiConsumer<String, String> createPushCallback(String username) {
         return (topic, payload) -> {

@@ -1,3 +1,11 @@
+/**
+ * 安全域管理页 —— 域的增删改查 + 父子层级关系维护
+ *
+ * 功能说明：
+ * - 表格展示所有安全域，支持新增、编辑、删除
+ * - 父域字段通过向上遍历 parentId 链展示完整层级路径
+ * - 弹窗表单中父域选择器排除当前编辑的域（防止自引用）
+ */
 import React, { useEffect, useState } from 'react';
 import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
@@ -12,6 +20,10 @@ const DomainManage: React.FC = () => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form] = Form.useForm();
 
+  /**
+   * 根据 domainId 向上遍历 parentId 链，拼接完整层级路径
+   * 例如：医疗域 / 西南医院
+   */
   const getDomainLabel = (domainId?: number | null): string => {
     if (!domainId) return '-';
     const lookup = new Map(domains.map((item) => [item.id, item]));

@@ -5,7 +5,21 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * 审计日志表
+ * 审计日志表。
+ * <p>
+ * 作为统一记录表，同时承载两类事件来源：
+ * <ol>
+ *   <li>后端操作：用户通过 Web API 执行的管理操作</li>
+ *   <li>EMQX Webhook 事件：Broker 推送的客户端连接、消息发布、订阅等 MQTT 事件</li>
+ * </ol>
+ * <p>
+ * actionType 枚举值及来源：
+ * <ul>
+ *   <li>connect — 客户端连接成功（EMQX webhook: client.connected）</li>
+ *   <li>publish — 消息发布事件（EMQX webhook: message.publish）</li>
+ *   <li>subscribe — 主题订阅事件（EMQX webhook: client.subscribed）</li>
+ *   <li>acl_deny — ACL 权限拒绝事件（EMQX webhook: client_acl_deny 或后端拦截）</li>
+ * </ul>
  */
 @Data
 @TableName("sys_audit_log")

@@ -11,6 +11,18 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * XML转JSON转换器，基于Jackson XmlMapper实现。
+ * <p>
+ * 核心处理流程：XML字符串 → Jackson XmlMapper解析为JsonNode → cleanXmlNodes清洗XML特有结构 → 输出标准JSON。
+ * <p>
+ * cleanXmlNodes负责移除XML序列化产生的特有产物：
+ * <ul>
+ *   <li>去除属性名的"@"前缀（XML属性在Jackson中被标记为@fieldName）</li>
+ *   <li>处理"$"和"#text"键（XML文本内容和混合内容）</li>
+ *   <li>当对象仅含文本内容时，简化为纯值节点</li>
+ * </ul>
+ */
 @Component
 public class XmlDataConverter implements DataConverter {
 
@@ -38,6 +50,20 @@ public class XmlDataConverter implements DataConverter {
         }
     }
 
+    /**
+     * 清洗XML解析产生的特有节点结构，使其符合标准JSON格式。
+     * <p>
+     * 转换步骤：
+     * <ol>
+     *   <li>遍历对象的所有字段，去除字段名的"@"前缀（XML属性标记）</li>
+     *   <li>递归处理每个字段的子节点</li>
+     *   <li>处理"$"和"#text"键：若对象仅含文本内容，简化为纯值节点；否则移除文本键</li>
+     *   <li>数组节点逐元素递归清洗</li>
+     * </ol>
+     *
+     * @param node 待清洗的JsonNode
+     * @return 清洗后的JsonNode
+     */
     private JsonNode cleanXmlNodes(JsonNode node) {
         if (node.isObject()) {
             ObjectNode obj = (ObjectNode) node;

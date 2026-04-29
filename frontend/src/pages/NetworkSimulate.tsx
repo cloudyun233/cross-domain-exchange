@@ -1,3 +1,12 @@
+/**
+ * 弱网模拟页 —— 预设场景选择 + Linux TC 集成
+ *
+ * 功能说明：
+ * - 展示预设弱网场景卡片（无限制/标准网络/政务跨域波动/普通弱网/极端弱网）
+ * - 选中后点击"应用弱网设置"调用后端 API，通过 Linux TC 配置网络参数
+ * - 每张卡片显示延迟、丢包率、带宽三项指标
+ * - 仅管理员可访问
+ */
 import React, { useEffect, useState } from 'react';
 import { Card, Typography, Button, Tag, Row, Col, Alert, message, Spin, Result } from 'antd';
 import {
@@ -21,6 +30,7 @@ interface Preset {
   description: string;
 }
 
+/** 预设场景 → 图标映射，每个场景对应一个语义化图标和颜色 */
 const presetIcons: Record<string, React.ReactNode> = {
   '无限制': <CheckCircleOutlined style={{ fontSize: 32, color: '#52c41a' }} />,
   '标准网络': <WifiOutlined style={{ fontSize: 32, color: '#1890ff' }} />,
@@ -29,6 +39,7 @@ const presetIcons: Record<string, React.ReactNode> = {
   '极端弱网': <CloseCircleOutlined style={{ fontSize: 32, color: '#f5222d' }} />,
 };
 
+/** 预设场景 → 主题色映射，用于卡片边框、阴影和选中态背景 */
 const presetColors: Record<string, string> = {
   '无限制': '#52c41a',
   '标准网络': '#1890ff',
@@ -55,6 +66,12 @@ const NetworkSimulate: React.FC = () => {
     }).finally(() => setLoading(false));
   }, []);
 
+  /**
+   * 应用弱网设置：
+   * 1. 根据选中预设获取 delay/loss/bandwidth 参数
+   * 2. 调用后端 /network/simulate 接口，通过 Linux TC 生效
+   * 3. 成功后更新当前生效预设标识
+   */
   const handleApply = async () => {
     const preset = presets.find(p => p.name === selectedPreset);
     if (!preset) return;

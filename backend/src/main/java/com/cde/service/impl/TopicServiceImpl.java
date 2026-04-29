@@ -13,6 +13,13 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/**
+ * 主题服务实现
+ *
+ * <p>发布编排流程：建立MQTT连接 → 发布消息 → 记录审计日志。
+ * ACL拒绝检测：捕获BusinessException(FORBIDDEN)，单独记录acl_deny审计事件，
+ * 确保非法发布尝试被完整追踪。</p>
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -22,6 +29,13 @@ public class TopicServiceImpl implements TopicService {
     private final AuditService auditService;
     private final DomainService domainService;
 
+    /**
+     * 发布消息到MQTT Broker
+     *
+     * <p>采用try-catch审计模式：无论发布成功或失败，均记录审计日志。
+     * ACL拒绝(403)记录为acl_deny，其他业务异常记录为publish_fail，
+     * 未知异常包装为500错误并记录审计。</p>
+     */
     @Override
     public void publishMsg(String topic, String payload, int qos, boolean retain, String username, String token) {
         try {

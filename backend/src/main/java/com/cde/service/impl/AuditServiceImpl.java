@@ -78,22 +78,26 @@ public class AuditServiceImpl implements AuditService {
         String detail;
 
         switch (eventType) {
+            // 客户端连接成功事件
             case "client.connected":
                 actionType = "connect";
                 detail = String.format("客户端连接成功, 协议=%s",
                         event.getOrDefault("proto_name", "MQTT"));
                 break;
+            // 客户端断开连接事件
             case "client.disconnected":
                 actionType = "disconnect";
                 detail = String.format("客户端断开连接, 原因=%s",
                         event.getOrDefault("reason", "normal"));
                 break;
+            // 消息发布事件
             case "message.publish":
                 actionType = "publish";
                 String topic = String.valueOf(event.getOrDefault("topic", ""));
                 detail = String.format("发布消息到主题 %s, QoS=%s",
                         topic, event.getOrDefault("qos", "0"));
                 break;
+            // ACL授权校验事件：根据result字段区分为acl_deny或acl_allow
             case "client.authorize":
                 String result = String.valueOf(event.getOrDefault("result", ""));
                 if ("deny".equals(result)) {
@@ -109,12 +113,14 @@ public class AuditServiceImpl implements AuditService {
                             event.getOrDefault("topic", ""));
                 }
                 break;
+            // 主题订阅事件
             case "session.subscribed":
                 actionType = "subscribe";
                 detail = String.format("订阅主题 %s, QoS=%s",
                         event.getOrDefault("topic", ""),
                         event.getOrDefault("qos", "0"));
                 break;
+            // 消息投递事件
             case "message.delivered":
                 actionType = "deliver";
                 detail = String.format("消息投递成功, 主题=%s, QoS=%s",
@@ -134,6 +140,12 @@ public class AuditServiceImpl implements AuditService {
         return auditLogMapper.selectPage(new Page<>(page, size), buildLogQuery(clientId, actionType));
     }
 
+    /**
+     * 导出审计日志为PDF
+     *
+     * <p>布局：横向A4，上方为标题和过滤条件摘要，下方为六列表格
+     * （ID、时间、客户端、操作类型、IP地址、详情），表头灰底加粗。</p>
+     */
     @Override
     public byte[] exportLogsAsPdf(String clientId, String actionType) {
         List<SysAuditLog> logs = auditLogMapper.selectList(buildLogQuery(clientId, actionType));
@@ -190,6 +202,7 @@ public class AuditServiceImpl implements AuditService {
         return wrapper;
     }
 
+    /** 使用STSong-Light字体，支持中文字符渲染（iText内置CJK字体，无需外部TTF文件） */
     private Font createFont(int size, int style) {
         return FontFactory.getFont("STSong-Light", "UniGB-UCS2-H", BaseFont.NOT_EMBEDDED, size, style);
     }

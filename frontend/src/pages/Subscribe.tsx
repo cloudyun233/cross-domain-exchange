@@ -1,3 +1,13 @@
+/**
+ * 数据订阅页 —— 域树选择 + MQTT 连接管理 + 主题订阅 + 实时消息展示
+ *
+ * 操作流程：
+ * 1. 从域树选择订阅域 → 自动填充订阅过滤器（subscribeTopic 或 key/#）
+ * 2. 点击"连接 MQTT" → 后端代理建立 MQTT 连接（SSE 自动就绪）
+ * 3. 点击"订阅主题" → 向 EMQX 订阅指定主题
+ * 4. 收到的消息通过 SSE 推送，实时显示在消息列表中
+ * 5. 可随时取消订阅或断开 MQTT（断开后 EMQX 缓存离线消息）
+ */
 import React, { useEffect, useState } from 'react';
 import { Badge, Button, Card, Col, Empty, Input, List, Radio, Row, Space, Tag, Tree, Typography, message } from 'antd';
 import { DisconnectOutlined, LinkOutlined, MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons';

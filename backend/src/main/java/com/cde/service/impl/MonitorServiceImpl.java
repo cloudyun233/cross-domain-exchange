@@ -15,7 +15,14 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
- * Monitoring service backed by EMQX management APIs.
+ * 监控服务实现
+ *
+ * <p>通过定时轮询（{@code @Scheduled}，间隔由emqx.monitor.poll-interval-ms配置，默认5s）
+ * 从EMQX Management API拉取指标数据。流量历史采用滑动窗口策略，保留最近60个快照。
+ * 消息速率通过相邻两次轮询的累计值差值（delta）计算。</p>
+ *
+ * <p>线程安全：cachedStats/cachedMetrics/cachedClients使用volatile保证可见性；
+ * trafficHistory使用ConcurrentLinkedDeque保证并发安全。</p>
  */
 @Slf4j
 @Service
@@ -32,6 +39,13 @@ public class MonitorServiceImpl implements MonitorService {
     private volatile long lastMessagesReceived = 0;
     private volatile long lastMessagesSent = 0;
 
+    /**
+     * 定时轮询EMQX指标并计算增量
+     *
+     * <p>delta计算逻辑：当前累计值 - 上次累计值 = 本轮新增消息数。
+     * 首次轮询时lastMessagesReceived为0，delta记为0以避免冷启动误报。
+     * 滑动窗口超过60个快照时淘汰最早的数据。</p>
+     */
     @Scheduled(fixedDelayString = "${emqx.monitor.poll-interval-ms:5000}")
     public void pollMetrics() {
         try {
