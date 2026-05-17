@@ -79,7 +79,6 @@ public class XmlDataConverter implements DataConverter {
                 obj.set(cleanName, cleanXmlNodes(child));
             }
 
-            // 处理 XML 文本内容（$ 或 #text）
             String[] textKeys = {"$", "#text"};
             for (String textKey : textKeys) {
                 if (obj.has(textKey)) {
@@ -88,8 +87,7 @@ public class XmlDataConverter implements DataConverter {
                     if (obj.isEmpty()) {
                         return textNode;
                     }
-                    // 【可选】如果需要保留文本内容，取消下面注释
-                    // obj.set("text", textNode);
+                    obj.set(textKey, textNode);
                 }
             }
 

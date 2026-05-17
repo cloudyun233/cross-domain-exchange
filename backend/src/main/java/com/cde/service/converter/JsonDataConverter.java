@@ -1,6 +1,7 @@
 package com.cde.service.converter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
@@ -10,8 +11,10 @@ import org.springframework.stereotype.Component;
  * convertFromJson：恒等操作，JSON到JSON无需转换。
  */
 @Component
+@RequiredArgsConstructor
 public class JsonDataConverter implements DataConverter {
-    private final ObjectMapper mapper = new ObjectMapper();
+
+    private final ObjectMapper objectMapper;
 
     @Override
     public boolean supports(String formatType) {
@@ -23,12 +26,12 @@ public class JsonDataConverter implements DataConverter {
         try {
             if (rawData instanceof String) {
                 // 校验是否为合法JSON
-                mapper.readTree((String) rawData);
+                objectMapper.readTree((String) rawData);
                 return (String) rawData;
             }
-            return mapper.writeValueAsString(rawData);
+            return objectMapper.writeValueAsString(rawData);
         } catch (Exception e) {
-            throw new RuntimeException("JSON格式校验失败: " + e.getMessage());
+            throw new RuntimeException("JSON格式校验失败: " + e.getMessage(), e);
         }
     }
 
