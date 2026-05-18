@@ -36,6 +36,12 @@ export interface ReceivedMessage {
   meta?: { source_format?: string; converter?: string };
 }
 
+type SseWaiter = {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
 interface SubscribeContextType {
   topic: string;
   qos: number;
@@ -101,25 +107,31 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const sseRef = useRef<EventSourcePolyfill | null>(null);
   const sseConnectedRef = useRef(false);
-  const sseWaitersRef = useRef<Array<() => void>>([]);
+  const sseWaitersRef = useRef<SseWaiter[]>([]);
   const sseReconnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sseReconnAttemptsRef = useRef(0);
   const shouldSseReconnRef = useRef(false);
   const mqttConnectedRef = useRef(false);
+  const isUnmountedRef = useRef(false);
 
   // ── 状态同步工具 ──────────────────────────────────────────────────────────
 
   const updateSseConnected = (connected: boolean) => {
     sseConnectedRef.current = connected;
+    if (isUnmountedRef.current) return;
     setSseConnected(connected);
     if (connected) {
       const waiters = sseWaitersRef.current;
       sseWaitersRef.current = [];
-      waiters.forEach((resolve) => resolve());
+      waiters.forEach((waiter) => {
+        clearTimeout(waiter.timer);
+        waiter.resolve();
+      });
     }
   };
 
   const applySessionStatus = (data: any) => {
+    if (isUnmountedRef.current) return;
     const connected = Boolean(data?.mqttConnected);
     mqttConnectedRef.current = connected;
     setMqttConnected(connected);
@@ -144,6 +156,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
    * - 保留最近 100 条，新消息在前
    */
   const pushMessage = (rawPayload: string, msgTopic: string, timestamp?: number) => {
+    if (isUnmountedRef.current) return;
     let payloadText = rawPayload;
     let meta: ReceivedMessage['meta'];
     try {
@@ -161,10 +174,24 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     if (sseReconnTimerRef.current) { clearTimeout(sseReconnTimerRef.current); sseReconnTimerRef.current = null; }
   };
 
+  const cancelSseWaiters = (reason: string) => {
+    const waiters = sseWaitersRef.current;
+    sseWaitersRef.current = [];
+    waiters.forEach((waiter) => {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error(reason));
+    });
+  };
+
   /** 关闭 SSE 连接并清理重连定时器，将连接状态置为 false */
-  const closeSse = () => {
+  const closeSse = (cancelWaiters = true) => {
     if (sseRef.current) { sseRef.current.close(); sseRef.current = null; }
     clearSseReconnTimer();
+
+    if (cancelWaiters) {
+      cancelSseWaiters('SSE 连接已关闭');
+    }
+
     updateSseConnected(false);
   };
 
@@ -176,7 +203,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
    * - 连接断开时若 shouldSseReconn 为 true 则触发重连调度
    */
   const openSse = () => {
-    closeSse();
+    closeSse(false);
     console.info('[SSE] 建立 SSE 连接...');
     const es = api.openSseChannel();
     sseRef.current = es;
@@ -218,16 +245,30 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
    */
   const ensureSseConnected = async () => {
     if (sseConnectedRef.current) return;
+
+    if (!shouldSseReconnRef.current) {
+      throw new Error('组件已卸载，无法建立 SSE 连接');
+    }
+
     const connectedPromise = new Promise<void>((resolve, reject) => {
+      let waiter: SseWaiter | null = null;
       const timer = setTimeout(() => {
-        sseWaitersRef.current = sseWaitersRef.current.filter((waiter) => waiter !== onConnected);
+        sseWaitersRef.current = sseWaitersRef.current.filter((item) => item !== waiter);
         reject(new Error('SSE 连接建立超时，请稍后重试'));
       }, 3000);
-      const onConnected = () => {
-        clearTimeout(timer);
-        resolve();
+      waiter = {
+        timer,
+        reject,
+        resolve: () => {
+          clearTimeout(timer);
+          if (!shouldSseReconnRef.current) {
+            reject(new Error('组件已卸载，SSE 连接已取消'));
+            return;
+          }
+          resolve();
+        },
       };
-      sseWaitersRef.current.push(onConnected);
+      sseWaitersRef.current.push(waiter);
     });
     openSse();
     await connectedPromise;
@@ -346,6 +387,8 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
    * - 退出：关闭 SSE、清理重连标记、清空消息和订阅状态
    */
   useEffect(() => {
+    isUnmountedRef.current = false;
+
     if (!isAuthenticated) {
       // 退出登录：关闭一切
       shouldSseReconnRef.current = false;
@@ -368,9 +411,13 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, [isAuthenticated]);
 
   // 组件卸载清理
-  useEffect(() => () => {
-    shouldSseReconnRef.current = false;
-    closeSse();
+  useEffect(() => {
+    isUnmountedRef.current = false;
+    return () => {
+      isUnmountedRef.current = true;
+      shouldSseReconnRef.current = false;
+      closeSse();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

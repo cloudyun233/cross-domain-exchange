@@ -2,7 +2,7 @@
  * ACL 规则管理页 —— 访问控制规则的增删改查 + EMQX 实时同步
  *
  * 核心机制：
- * - 每次创建/修改/删除规则后，后端自动推送到 EMQX Broker
+ * - 每次创建/修改/删除规则后，后端自动全量同步到 EMQX Broker
  * - "全量同步到 Broker"按钮用于恢复或手动对齐场景，
  *   将数据库中所有规则重新推送到 EMQX，确保两端一致
  * - 支持全局规则（username 为 *）和用户级规则
@@ -55,9 +55,13 @@ const AclManage: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    await api.deleteAclRule(id);
-    message.success('ACL 规则删除成功，已同步到 Broker');
-    void fetchRules();
+    try {
+      await api.deleteAclRule(id);
+      message.success('ACL 规则删除成功，已同步到 Broker');
+      void fetchRules();
+    } catch (e: any) {
+      message.error(e.message || 'ACL 规则删除失败');
+    }
   };
 
   /**
@@ -73,6 +77,8 @@ const AclManage: React.FC = () => {
       } else {
         message.error(res.message);
       }
+    } catch (e: any) {
+      message.error(e.message || 'ACL 规则同步失败');
     } finally {
       setSyncing(false);
     }
@@ -158,7 +164,7 @@ const AclManage: React.FC = () => {
 
       <Alert
         message="ACL 说明"
-        description="每次创建、修改、删除规则后，系统都会自动推送到 EMQX Broker。全量同步按钮用于恢复或手动对齐场景。"
+        description="每次创建、修改、删除规则后，系统都会自动全量同步到 EMQX Broker；同步失败时后端会回滚本次变更并尝试恢复 Broker 快照。"
         type="info"
         showIcon
         closable

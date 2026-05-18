@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestOperations;
 import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
@@ -51,13 +52,17 @@ public class EmqxApiClient {
     @Value("${emqx.api.secret-key}")
     private String secretKey;
 
-    private final RestTemplate restTemplate;
+    private final RestOperations restTemplate;
 
     public EmqxApiClient() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(3000);
         factory.setReadTimeout(3000);
         this.restTemplate = new RestTemplate(factory);
+    }
+
+    EmqxApiClient(RestOperations restTemplate) {
+        this.restTemplate = restTemplate;
     }
 
     public boolean isApiReady() {
@@ -132,13 +137,14 @@ public class EmqxApiClient {
      *       全局规则 POST 到 {@code /rules/all}，用户规则 PUT 到 {@code /rules/users/{username}}</li>
      * </ol>
      *
-     * <p>禁用/启用步骤的失败会被忽略（仅记录 debug 日志），因为授权源可能本就处于目标状态。
-     * 单条规则推送失败不影响其余规则（仅记录 warn 日志）。</p>
+     * <p>禁用步骤失败会被忽略（仅记录 debug 日志），因为授权源可能本就处于目标状态。
+     * 清空、重新启用或任一规则推送失败都会返回 {@code false}，由上层决定是否回滚本次业务操作。</p>
      *
      * @param rules 待同步的 ACL 规则列表
      */
-    public void syncAllAclRules(List<SysTopicAcl> rules) {
+    public boolean syncAllAclRules(List<SysTopicAcl> rules) {
         try {
+            boolean allSuccess = true;
             String sourceUrl = baseUrl + "/authorization/sources/built_in_database";
             String rulesUrl = baseUrl + "/authorization/sources/built_in_database/rules";
             String userUrlTemplate = baseUrl + "/authorization/sources/built_in_database/rules/users/{username}";
@@ -158,7 +164,8 @@ public class EmqxApiClient {
                 exchange(rulesUrl, HttpMethod.DELETE, null, String.class);
                 log.debug("Cleared all ACL rules from built_in_database");
             } catch (Exception e) {
-                log.debug("Ignoring EMQX ACL cleanup failure: {}", e.getMessage());
+                allSuccess = false;
+                log.warn("Failed to clear EMQX ACL rules: {}", e.getMessage());
             }
 
             try {
@@ -169,7 +176,13 @@ public class EmqxApiClient {
                 exchange(sourceUrl, HttpMethod.PUT, enableBody, String.class);
                 log.debug("Enabled built_in_database authorization source");
             } catch (Exception e) {
-                log.debug("Ignoring failure to enable built_in_database: {}", e.getMessage());
+                allSuccess = false;
+                log.warn("Failed to enable built_in_database: {}", e.getMessage());
+            }
+
+            if (!allSuccess) {
+                log.warn("ACL full sync aborted before pushing rules, rules={}", rules.size());
+                return false;
             }
 
             List<Map<String, Object>> allRules = new ArrayList<>();
@@ -194,11 +207,14 @@ public class EmqxApiClient {
                     exchange(allUrl, HttpMethod.POST, body, String.class);
                     log.debug("Pushed {} 'all' ACL rules to EMQX", allRules.size());
                 } catch (Exception e) {
+                    allSuccess = false;
                     log.warn("Failed to push 'all' ACL rules: {}", e.getMessage());
                 }
             }
 
-            userRules.forEach((username, aclRules) -> {
+            for (Map.Entry<String, List<Map<String, Object>>> entry : userRules.entrySet()) {
+                String username = entry.getKey();
+                List<Map<String, Object>> aclRules = entry.getValue();
                 try {
                     String url = userUrlTemplate.replace("{username}", username);
                     Map<String, Object> body = new HashMap<>();
@@ -207,13 +223,20 @@ public class EmqxApiClient {
                     exchange(url, HttpMethod.PUT, body, String.class);
                     log.debug("Pushed ACL rules to EMQX for user: {}", username);
                 } catch (Exception e) {
+                    allSuccess = false;
                     log.warn("Failed to push ACL rules for user {}: {}", username, e.getMessage());
                 }
-            });
+            }
 
-            log.info("ACL full sync to EMQX completed, rules={}", rules.size());
+            if (allSuccess) {
+                log.info("ACL full sync to EMQX completed, rules={}", rules.size());
+            } else {
+                log.warn("ACL full sync to EMQX completed with failures, rules={}", rules.size());
+            }
+            return allSuccess;
         } catch (Exception e) {
             log.warn("Failed to sync ACL rules to EMQX: {}", e.getMessage());
+            return false;
         }
     }
 

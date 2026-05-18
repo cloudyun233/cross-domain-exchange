@@ -12,7 +12,7 @@ import java.util.List;
  * ACL 规则管理 REST API
  *
  * <p>提供 MQTT 主题访问控制（ACL）规则的增删改查，所有接口仅限管理员访问。
- * 每次增删改操作均实时同步至 EMQX Broker，确保权限变更即时生效。
+ * 每次增删改操作均实时全量同步至 EMQX Broker，确保权限变更即时生效。
  * <ul>
  *   <li>GET    /api/acl-rules                — 查询全部 ACL 规则</li>
  *   <li>GET    /api/acl-rules/username/{name} — 按用户名查询 ACL 规则</li>
@@ -53,7 +53,7 @@ public class AclController {
     /**
      * 创建 ACL 规则
      *
-     * <p>创建新规则后自动同步至 EMQX Broker，使权限立即生效。
+     * <p>创建新规则后自动全量同步至 EMQX Broker，使权限立即生效。
      *
      * @param acl ACL 规则实体
      * @return 创建成功的 ACL 规则
@@ -66,7 +66,7 @@ public class AclController {
     /**
      * 更新 ACL 规则
      *
-     * <p>更新规则后自动同步至 EMQX Broker，覆盖 Broker 侧的旧规则。
+     * <p>更新规则后自动全量同步至 EMQX Broker，覆盖 Broker 侧的旧规则。
      *
      * @param id  规则 ID
      * @param acl 更新后的 ACL 规则实体
@@ -80,7 +80,7 @@ public class AclController {
     /**
      * 删除 ACL 规则
      *
-     * <p>删除规则后自动同步至 EMQX Broker，撤销对应的访问权限。
+     * <p>删除规则后自动全量同步至 EMQX Broker，撤销对应的访问权限。
      *
      * @param id 规则 ID
      */

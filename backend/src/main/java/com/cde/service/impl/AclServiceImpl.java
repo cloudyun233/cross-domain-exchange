@@ -2,21 +2,26 @@ package com.cde.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cde.entity.SysTopicAcl;
+import com.cde.exception.BusinessException;
 import com.cde.mapper.SysTopicAclMapper;
 import com.cde.mqtt.EmqxApiClient;
 import com.cde.service.AclService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * ACL服务实现
  *
- * <p>采用"CRUD→推送"模式：create时单条推送（pushAclRule），update/delete时触发全量同步（syncToEmqx）。
- * 全量同步而非增量同步，避免EMQX端规则与数据库出现不一致。
- * 注意：syncToEmqx非线程安全，若并发调用可能导致重复推送，当前由单线程Controller保证串行。</p>
+ * <p>采用"CRUD→全量同步"模式，数据库始终作为 ACL 权限源。
+ * 写操作失败时会回滚数据库事务，并尽力将 EMQX 恢复为写操作前的规则快照。</p>
  */
 @Slf4j
 @Service
@@ -25,6 +30,7 @@ public class AclServiceImpl implements AclService {
 
     private final SysTopicAclMapper aclMapper;
     private final EmqxApiClient emqxApiClient;
+    private final ReentrantLock aclSyncLock = new ReentrantLock();
 
     @Override
     public List<SysTopicAcl> listAll() { return aclMapper.selectList(null); }
@@ -36,35 +42,107 @@ public class AclServiceImpl implements AclService {
     }
 
     @Override
+    @Transactional
     public SysTopicAcl create(SysTopicAcl acl) {
-        aclMapper.insert(acl);
-        // 实时推送到EMQX
-        emqxApiClient.pushAclRule(acl);
-        log.info("ACL规则创建并推送: username={}, topic={}, action={}, access={}",
-                acl.getUsername(), acl.getTopicFilter(), acl.getAction(), acl.getAccessType());
-        return acl;
+        boolean unlockOnExit = lockAclSyncUntilTransactionComplete();
+        try {
+            List<SysTopicAcl> beforeRules = aclMapper.selectList(null);
+            aclMapper.insert(acl);
+            syncCurrentRulesWithRestore(beforeRules);
+            log.info("ACL规则创建并同步: username={}, topic={}, action={}, access={}",
+                    acl.getUsername(), acl.getTopicFilter(), acl.getAction(), acl.getAccessType());
+            return acl;
+        } finally {
+            if (unlockOnExit) {
+                aclSyncLock.unlock();
+            }
+        }
     }
 
     @Override
+    @Transactional
     public SysTopicAcl update(Long id, SysTopicAcl acl) {
-        acl.setId(id);
-        aclMapper.updateById(acl);
-        // 全量同步确保一致性
-        syncToEmqx();
-        return aclMapper.selectById(id);
+        boolean unlockOnExit = lockAclSyncUntilTransactionComplete();
+        try {
+            List<SysTopicAcl> beforeRules = aclMapper.selectList(null);
+            acl.setId(id);
+            aclMapper.updateById(acl);
+            syncCurrentRulesWithRestore(beforeRules);
+            return aclMapper.selectById(id);
+        } finally {
+            if (unlockOnExit) {
+                aclSyncLock.unlock();
+            }
+        }
     }
 
     @Override
+    @Transactional
     public void delete(Long id) {
-        aclMapper.deleteById(id);
-        // 全量同步
-        syncToEmqx();
+        boolean unlockOnExit = lockAclSyncUntilTransactionComplete();
+        try {
+            List<SysTopicAcl> beforeRules = aclMapper.selectList(null);
+            aclMapper.deleteById(id);
+            syncCurrentRulesWithRestore(beforeRules);
+        } finally {
+            if (unlockOnExit) {
+                aclSyncLock.unlock();
+            }
+        }
     }
 
     @Override
     public void syncToEmqx() {
-        List<SysTopicAcl> allRules = aclMapper.selectList(null);
-        emqxApiClient.syncAllAclRules(allRules);
+        aclSyncLock.lock();
+        try {
+            syncRulesOrThrow(aclMapper.selectList(null));
+        } finally {
+            aclSyncLock.unlock();
+        }
+    }
+
+    private void syncCurrentRulesWithRestore(List<SysTopicAcl> beforeRules) {
+        List<SysTopicAcl> currentRules = aclMapper.selectList(null);
+        boolean synced = emqxApiClient.syncAllAclRules(currentRules);
+        if (!synced) {
+            restoreEmqxRules(beforeRules);
+            throw syncFailure();
+        }
+        log.info("ACL规则全量同步到EMQX, 共{}条", currentRules.size());
+    }
+
+    private void syncRulesOrThrow(List<SysTopicAcl> allRules) {
+        boolean synced = emqxApiClient.syncAllAclRules(allRules);
+        if (!synced) {
+            throw syncFailure();
+        }
         log.info("ACL规则全量同步到EMQX, 共{}条", allRules.size());
+    }
+
+    private boolean lockAclSyncUntilTransactionComplete() {
+        aclSyncLock.lock();
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return true;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                aclSyncLock.unlock();
+            }
+        });
+        return false;
+    }
+
+    private void restoreEmqxRules(List<SysTopicAcl> beforeRules) {
+        boolean restored = emqxApiClient.syncAllAclRules(beforeRules);
+        if (restored) {
+            log.warn("ACL规则同步失败，已将EMQX恢复为变更前快照, rules={}", beforeRules.size());
+        } else {
+            log.error("ACL规则同步失败，且EMQX恢复变更前快照失败, rules={}", beforeRules.size());
+        }
+    }
+
+    private BusinessException syncFailure() {
+        return new BusinessException(HttpStatus.BAD_GATEWAY, "ACL规则同步到EMQX失败，请检查Broker状态后重试");
     }
 }
