@@ -92,9 +92,11 @@ export const PublishProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [selectedTopic, setSelectedTopic] = useState<string>(saved.selectedTopic || '');
   const [selectedNode, setSelectedNode] = useState<DomainTreeNode | null>(saved.selectedNode || null);
   const [qos, setQos] = useState<number>(saved.qos ?? 1);
-  const [retain, setRetainState] = useState<boolean>(saved.retain ?? true);
+  const [retain, setRetainState] = useState<boolean>(saved.retain ?? false);
   const [format, setFormatState] = useState<'structured' | 'text'>(saved.format || 'structured');
-  const [payload, setPayloadState] = useState<string>(saved.payload || STRUCTURED_SAMPLE);
+  const [payload, setPayloadState] = useState<string>(
+    saved.payload ?? (saved.format === 'text' ? PLAIN_TEXT_SAMPLE : STRUCTURED_SAMPLE)
+  );
   const [history, setHistory] = useState<PublishHistoryItem[]>(saved.history || []);
 
   const persistState = (updates: Partial<PublishContextType>) => {
@@ -124,9 +126,7 @@ export const PublishProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const handleSetFormat = (newFormat: 'structured' | 'text') => {
     setFormatState(newFormat);
-    const newPayload = newFormat === 'text' ? PLAIN_TEXT_SAMPLE : STRUCTURED_SAMPLE;
-    setPayloadState(newPayload);
-    persistState({ format: newFormat, payload: newPayload });
+    persistState({ format: newFormat });
   };
 
   const handleSetPayload = (newPayload: string) => {

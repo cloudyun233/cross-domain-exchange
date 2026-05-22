@@ -71,9 +71,13 @@ const DomainManage: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    await api.deleteDomain(id);
-    message.success('安全域删除成功');
-    void fetchDomains();
+    try {
+      await api.deleteDomain(id);
+      message.success('安全域删除成功');
+      void fetchDomains();
+    } catch (e: any) {
+      message.error(e.message || '安全域删除失败');
+    }
   };
 
   const columns = [

@@ -85,9 +85,13 @@ const ClientManage: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    await api.deleteClient(id);
-    message.success('用户删除成功');
-    void fetchData();
+    try {
+      await api.deleteClient(id);
+      message.success('用户删除成功');
+      void fetchData();
+    } catch (e: any) {
+      message.error(e.message || '用户删除失败');
+    }
   };
 
   const openCreateModal = () => {

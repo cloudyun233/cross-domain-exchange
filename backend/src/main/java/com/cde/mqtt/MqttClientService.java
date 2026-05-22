@@ -532,10 +532,10 @@ public class MqttClientService {
     private UserMqttContext requireConnected(String username) {
         UserMqttContext ctx = userContexts.get(username);
         if (ctx == null) {
-            throw new IllegalStateException("用户 " + username + " 未建立 MQTT 连接");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "MQTT 未连接，请先连接 MQTT");
         }
         if (!ctx.client.getState().isConnected()) {
-            throw new IllegalStateException("用户 " + username + " 的 MQTT 连接已断开");
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "MQTT 连接已断开，请重新连接 MQTT");
         }
         if (!ctx.connected) {
             log.info("[MQTT] 客户端自动重连检测: username={}", username);
