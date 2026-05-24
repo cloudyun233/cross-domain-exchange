@@ -1,6 +1,6 @@
 # 已知问题清单
 
-本文记录 2026-05-19 基于用户使用流程完成的全仓库审查结果，并于 2026-05-22 再次复核补充。审查路径覆盖登录、发布、订阅、ACL 管理、域管理、用户管理、审计、监控与 Docker/EMQX 部署配置。
+本文记录 2026-05-19 基于用户使用流程完成的全仓库审查结果，并于 2026-05-22 再次复核补充，2026-05-23 第三轮并行审阅验证，2026-05-24 追加第四轮并行复核发现。审查路径覆盖登录、发布、订阅、ACL 管理、域管理、用户管理、审计、监控与 Docker/EMQX 部署配置。
 
 > 当前状态：后端现有测试通过，前端可完成生产构建。以下问题属于已知风险，尚未在代码中修复。
 
@@ -25,6 +25,38 @@
 | KI-015 | 建议修改 | 连接状态检查把后端和 EMQX 状态耦合 | 单路失败会误报另一服务离线 | 待处理 |
 | KI-016 | 建议修改 | 审计日志页面缺少 Schema 校验失败类型映射 | 事件显示、筛选和高亮不完整 | 待处理 |
 | KI-017 | 建议修改 | 审计日志 PDF 导出一次性加载全量日志 | 日志增长后可能超时或造成内存压力 | 待处理 |
+| KI-018 | 必须修复 | MybatisPlusConfig 硬编码 DbType.H2，MySQL 环境分页 SQL 方言错误 | 生产环境切换 MySQL 后分页查询可能报错 | 待处理 |
+| KI-019 | 必须修复 | JwtAuthenticationFilter 中 roleType 为 null 时抛出 NPE | 缺少 roleType 声明的 JWT 导致服务端 500 | 待处理 |
+| KI-020 | 必须修复 | EmqxApiClient 中 username 未编码直接拼入 URL 路径 | 路径注入风险，ACL 规则同步异常 | 待处理 |
+| KI-021 | 必须修复 | ClientController.update 缺少字段校验，可设置非法 roleType 和 domainId | 权限配置错乱，MQTT 主题路径异常 | 待处理 |
+| KI-022 | 必须修复 | MqttClientService.subscribeForUser 未校验 QoS 值，非法值致 NPE | 非法 QoS 导致订阅请求 500 崩溃 | 待处理 |
+| KI-023 | 建议修改 | AuditServiceImpl 中 IPv6 地址解析逻辑错误 | IPv6 环境审计日志 IP 不正确 | 待处理 |
+| KI-024 | 建议修改 | LoginRequest 缺少参数校验，null 用户名/密码致 NPE | 缺少输入校验导致错误信息不友好 | 待处理 |
+| KI-025 | 建议修改 | MqttClientService.connectForUser 存在并发竞态，同一用户可能创建多个连接 | MQTT 连接泄漏 | 待处理 |
+| KI-026 | 建议修改 | SubscribeServiceImpl.openSse 生命周期非原子，存在并发覆盖风险 | 并发打开 SSE 时消息推送可能丢失 | 待处理 |
+| KI-027 | 建议修改 | ClientController.create 中 clientId 无唯一性保证 | 重复 clientId 导致 MQTT 连接互踢 | 待处理 |
+| KI-028 | 建议修改 | AuditController 分页查询无上限约束，大 size 值可致 OOM | 恶意大分页请求耗尽 JVM 堆内存 | 待处理 |
+| KI-029 | 建议修改 | SysUserMapper.selectByClientIdWithDomain 嵌套对象映射失效 | domain 字段永远为 null | 待处理 |
+| KI-030 | 建议修改 | MqttClientService 中断连用户上下文永不清理 | userContexts 内存泄漏 | 待处理 |
+| KI-031 | 建议修改 | AuthController.getCurrentUser 异常时返回 HTTP 200 而非 401 | 前端无法正确识别认证失败 | 待处理 |
+| KI-032 | 必须修复 | ConnectionStatus checkConnection 存在竞态条件 | 旧调用的 catch 清除新调用的定时器和控制器 | 待处理 |
+| KI-033 | 必须修复 | AuthContext token 刷新可能触发无限循环 | 后端 token 轮换时前端无限请求 /auth/me | 待处理 |
+| KI-034 | 必须修复 | api.ts 的 401 处理绕过 AuthContext.logout，未关闭服务端订阅会话 | JWT 过期时服务端 MQTT+SSE 会话泄漏 | 待处理 |
+| KI-035 | 建议修改 | Publish 和 Subscribe 页面 api.getDomainTree() 缺少异常处理 | 域树加载失败用户无反馈 | 待处理 |
+| KI-036 | 建议修改 | NetworkSimulate api.getNetworkPresets() 缺少异常处理 | 预设加载失败用户无反馈 | 待处理 |
+| KI-037 | 建议修改 | DomainManage 和 ClientManage 的 getDomainLabel 遇循环 parentId 会无限循环 | 循环引用时浏览器卡死 | 待处理 |
+| KI-038 | 建议修改 | AuditLog 分页切换触发双重 API 请求 | 每次翻页产生一次无意义的额外请求 | 待处理 |
+| KI-039 | 建议修改 | SubscribeContext doCancelTopic 取消订阅失败时无用户反馈 | 用户以为取消成功但服务端订阅仍存在 | 待处理 |
+| KI-040 | 建议修改 | AuthContext refreshProfile 错误被静默吞没 | 会话验证失败用户无预警 | 待处理 |
+| KI-041 | 建议修改 | PublishContext 切换消息格式时未自动填充示例载荷 | 与设计注释不符，降低使用效率 | 待处理 |
+| KI-042 | 必须修复 | EMQX 初始 ACL 同步失败后不会继续重试 | 应用启动后可能使用空或旧 ACL 规则 | 待处理 |
+| KI-043 | 必须修复 | 用户删除或改名不会清理、迁移 ACL | 旧权限可能被下一任同名用户继承 | 待处理 |
+| KI-044 | 必须修复 | adminOnly 路由在用户资料恢复前误判管理员 | 管理员刷新管理页会被跳转到普通页面 | 待处理 |
+| KI-045 | 建议修改 | Broker 取消订阅失败仍返回成功 | 前端、本地记忆与 Broker 订阅状态可能不一致 | 待处理 |
+| KI-046 | 建议修改 | 多个更新/删除接口忽略受影响行数 | 不存在资源可能返回成功或 500 | 待处理 |
+| KI-047 | 建议修改 | 登录失败的 401 被全局当作会话过期处理 | 密码错误等认证失败提示被吞掉 | 待处理 |
+| KI-048 | 建议修改 | refresh token 契约不可用且文档、DTO、前端服务不一致 | Access token 过期后无法按文档刷新 | 待处理 |
+| KI-049 | 建议修改 | NetworkController 弱网模拟命令超时保护不可靠 | 子进程卡住时请求线程可能长期阻塞 | 待处理 |
 
 ## 详细说明
 
@@ -433,44 +465,572 @@ PDF 导出接口直接 `selectList()` 读取所有符合条件的审计日志，
 - 大数据量导出改为分页读取、流式写入或异步任务生成文件。
 - 超过阈值时返回明确提示，引导用户缩小筛选范围。
 
-## 存在性验证（2026-05-22）
+### KI-018：MybatisPlusConfig 硬编码 DbType.H2，MySQL 环境分页 SQL 方言错误
 
-| 编号 | 验证状态 | 证据 | 说明 |
-| --- | --- | --- | --- |
-| KI-001 | 仍存在 | `application.yml`、`SecurityConfig.java`、`docker-compose.yml` | H2 Console 仍启用并允许远程访问，安全配置仍放行 `/h2-console/**`，Docker 后端仍映射 `8080`。 |
-| KI-002 | 仍存在 | `application.yml`、`application-mysql.yml`、`dockerrun/emqx/emqx.conf`、`README.md` | JWT 密钥、EMQX API Key/Secret、集群 Cookie、MySQL 示例密码仍在仓库内。 |
-| KI-003 | 仍存在 | `JwtAuthenticationFilter.java`、`JwtUtil.java`、`ClientController.java`、`AuthServiceImpl.java` | 鉴权仍主要依赖 JWT 签名与过期时间，缺少用户状态、角色版本和撤权校验。 |
-| KI-004 | 仍存在 | `DomainManage.tsx`、`DomainServiceImpl.java`、`AuthServiceImpl.java` | 前端只排除当前域作为父域，后端创建和更新未防环，域路径遍历未记录 visited。 |
-| KI-005 | 仍存在 | `SecurityConfig.java`、`WebhookController.java`、`AuditServiceImpl.java` | `/api/webhook/**` 仍公开放行，Webhook 入库前没有来源、签名或共享密钥校验。 |
-| KI-006 | 仍存在 | `MqttClientService.java`、`SubscribeServiceImpl.java` | 订阅接收和 SSE 推送日志仍记录 payload 前 200 字符。 |
-| KI-007 | 仍存在 | `application-docker.yml`、`MqttClientService.java`、`docker-compose.yml`、`emqx.conf` | Docker Profile 仍信任任意证书，TLS 失败仍降级 TCP，1883 明文端口仍开放。 |
-| KI-008 | 仍存在 | `App.tsx`、`Dashboard.tsx`、`vite.config.ts`、`dist/index.html` | 路由页面和 ECharts 仍静态导入，Vite 未配置手动分包，构建产物仍以单个主 JS 为主。 |
-| KI-009 | 仍存在 | `SubscribeContext.tsx` | SSE 重试耗尽后仍关闭重连开关，后续主动连接仍会触发“组件已卸载”错误路径。 |
-| KI-010 | 仍存在 | `Login.tsx`、`AuthContext.tsx` | 登录跳转仍直接解析 `sessionStorage.user`，`login()` 仍不返回标准化用户信息。 |
-| KI-011 | 仍存在 | `SubscribeContext.tsx`、`Subscribe.tsx` | 会话状态只恢复 `subscribedTopics`，取消订阅仍依赖 `activeTopic`。 |
-| KI-012 | 仍存在 | `AuthContext.tsx` | 初始化仍直接 `JSON.parse(sessionStorage.user)`，没有解析失败兜底。 |
-| KI-013 | 仍存在 | `JwtAuthenticationFilter.java`、`SecurityConfig.java`、`AuthContext.tsx`、`api.ts` | 无效 JWT 未稳定返回 401，前端 profile 刷新失败也未清理会话。 |
-| KI-014 | 仍存在 | `DomainServiceImpl.java`、`DomainManage.tsx` | `domainCode` 仍未校验就入库并拼入 MQTT 主题路径。 |
-| KI-015 | 仍存在 | `ConnectionStatus.tsx` | 后端和 EMQX 健康检查仍由同一个 `Promise.all` 统一失败处理。 |
-| KI-016 | 仍存在 | `AuditLog.tsx`、`TopicController.java` | 后端会记录 `json_schema_validate_fail`，前端审计映射仍缺少该类型。 |
-| KI-017 | 仍存在 | `AuditServiceImpl.java` | PDF 导出仍一次性 `selectList()` 全量日志并同步生成 PDF。 |
+**优先级：** 必须修复
 
-## 已完成验证
+**涉及位置：**
 
-```bash
-cd backend
-.\mvnw.cmd test
-```
+- `backend/src/main/java/com/cde/config/MybatisPlusConfig.java`
 
-结果：后端 9 个测试全部通过。
+**现象：**
 
-```bash
-cd frontend
-npm run build
-```
+分页插件固定使用 `DbType.H2`，但项目提供了 `application-mysql.yml` 的 MySQL Profile。当使用 MySQL Profile 启动时，分页插件仍生成 H2 方言的分页 SQL。虽然 H2 (MySQL 模式) 与 MySQL 的 `LIMIT/OFFSET` 语法大部分兼容，但在复杂查询（如带 `FOR UPDATE`、子查询分页、`ORDER BY` 含函数等场景）下可能生成不合法 SQL，导致分页查询失败。
 
-结果：前端生产构建成功，但存在主包体积过大的构建警告。
+**建议：**
 
-## 后续建议
+- 根据 `spring.datasource.driver-class-name` 或自定义配置动态选择 `DbType`，例如通过 `@Value` 注入并切换。
 
-优先处理 KI-001 到 KI-004，这几项直接影响认证、撤权和部署安全。KI-005 到 KI-008 可作为下一轮安全加固和体验优化任务推进。
+### KI-019：JwtAuthenticationFilter 中 roleType 为 null 时抛出 NPE
+
+**优先级：** 必须修复
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/security/JwtAuthenticationFilter.java`
+
+**现象：**
+
+`getRoleTypeFromToken` 从 JWT claims 中取 `roleType` 字段，若令牌中不包含该声明（如旧版令牌、手动构造的令牌、或 claim 被删改），返回值为 `null`，随后 `roleType.toUpperCase()` 抛出 `NullPointerException`，导致整个请求认证流程崩溃，返回 500 错误。
+
+**建议：**
+
+- 对 `roleType` 做 null 检查，为 null 时拒绝认证或赋予默认最小权限角色。
+
+### KI-020：EmqxApiClient 中 username 未编码直接拼入 URL 路径
+
+**优先级：** 必须修复
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/mqtt/EmqxApiClient.java`
+
+**现象：**
+
+ACL 规则中的 `username` 直接拼接到 URL 路径中，未做任何 URL 编码。若 username 包含 `/`、`?`、`#`、空格等特殊字符，URL 路径会被篡改或断裂。
+
+**建议：**
+
+- 使用 `URLEncoder.encode(username, StandardCharsets.UTF_8)` 编码后再拼入 URL，或使用 `UriComponentsBuilder` 构建安全 URL。
+
+### KI-021：ClientController.update 缺少字段校验，可设置非法 roleType 和 domainId
+
+**优先级：** 必须修复
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/controller/ClientController.java`
+
+**现象：**
+
+直接使用实体类 `SysUser` 作为 `@RequestBody`，未对可更新字段做白名单限制或校验。管理员可以将 `roleType` 设为任意值，或将 `domainId` 设为不存在的域 ID。
+
+**建议：**
+
+- 创建独立的 UpdateUserDTO 做白名单限制，或对 `roleType` 和 `domainId` 增加合法值校验。
+
+### KI-022：MqttClientService.subscribeForUser 未校验 QoS 值，非法值致 NPE
+
+**优先级：** 必须修复
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/mqtt/MqttClientService.java`
+
+**现象：**
+
+`MqttQos.fromCode(int)` 仅接受 0/1/2，对其他值返回 `null`。若前端传入 `qos=3` 或负数，`MqttQos.fromCode(3)` 返回 `null`，后续 `.send()` 抛出 `NullPointerException`。
+
+**建议：**
+
+- 在入口处校验 `qos` 必须为 0/1/2，非法值抛出 `BusinessException(BAD_REQUEST)`。
+
+### KI-023：AuditServiceImpl 中 IPv6 地址解析逻辑错误
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/service/impl/AuditServiceImpl.java`
+
+**现象：**
+
+EMQX 的 `peername` 格式为 `ip:port`，当前逻辑用 `lastIndexOf(':')` 剥离端口。但 IPv6 地址本身包含冒号（如 `[::1]:1883`），`lastIndexOf(':')` 会定位到地址内部的冒号而非端口分隔符，导致截取结果为 `[::1`（残留方括号且地址不完整）。
+
+**建议：**
+
+- 先判断是否为 IPv6 格式（以 `[` 开头），若是则取 `]` 前的内容；否则用 `lastIndexOf(':')` 剥离端口。
+
+### KI-024：LoginRequest 缺少参数校验，null 用户名/密码致 NPE
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/dto/LoginRequest.java`
+- `backend/src/main/java/com/cde/service/impl/AuthServiceImpl.java`
+
+**现象：**
+
+`LoginRequest` 的 `username` 和 `password` 字段没有 `@NotBlank` 等校验注解，`AuthController.login` 也没有 `@Valid` 注解。若请求体中 `username` 为 `null`，`getRequiredUser(null)` 会执行 `getUserByUsername(null)`，MyBatis-Plus 会生成 `WHERE username IS NULL` 的 SQL。
+
+**建议：**
+
+- 在 `LoginRequest` 上添加 `@NotBlank` 注解，在 `AuthController.login` 参数上添加 `@Valid`。
+
+### KI-025：MqttClientService.connectForUser 存在并发竞态，同一用户可能创建多个连接
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/mqtt/MqttClientService.java`
+
+**现象：**
+
+`connectForUser` 的"检查-然后-操作"不是原子的。两个线程同时为同一用户调用 `connectForUser`，都看到 `existing=null`，各自创建新的 `UserMqttContext` 并 `put`，后写入的覆盖先写入的，导致先创建的 MQTT 连接泄漏。
+
+**建议：**
+
+- 使用 `userContexts.compute()` 原子操作替代 get+put 组合，或在方法入口对 username 加锁。
+
+### KI-026：SubscribeServiceImpl.openSse 生命周期非原子，存在并发覆盖风险
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/service/impl/SubscribeServiceImpl.java`
+
+**现象：**
+
+`openSse` 中关闭旧 emitter、创建新 emitter、注册回调并写入 `userEmitters` 的流程不是一个原子操作。当前回调使用 `userEmitters.remove(username, emitter)`，不会支持“旧回调误删新 emitter”的精确说法；但并发打开 SSE 时，不同调用仍可能交叉完成，造成连接覆盖、生命周期回调顺序混乱或短时间内消息推送目标不稳定。
+
+**建议：**
+
+- 使用 `ConcurrentHashMap.compute()` 或按 username 加锁，原子地完成“关闭旧连接、写入新连接、注册生命周期回调”的流程。
+
+### KI-027：ClientController.create 中 clientId 无唯一性保证
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/controller/ClientController.java`
+
+**现象：**
+
+clientId 按 `username_001` 模式生成，但数据库 `sys_user` 表的 `client_id` 列没有 UNIQUE 约束。若删除用户后以相同用户名重建，会导致 MQTT Broker 上相同 clientId 的客户端互踢。
+
+**建议：**
+
+- 在 `sys_user` 表上为 `client_id` 添加 UNIQUE 约束，或在创建时检查唯一性后生成递增后缀。
+
+### KI-028：AuditController 分页查询无上限约束，大 size 值可致 OOM
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/controller/AuditController.java`
+
+**现象：**
+
+`size` 参数仅设了默认值 20，没有最大值限制。管理员可传入 `size=999999`，MyBatis-Plus 会生成 `LIMIT 999999` 的 SQL，将大量审计日志加载到内存。
+
+**建议：**
+
+- 添加 `@Max` 校验注解或在代码中 `size = Math.min(size, 500)` 限制上限。
+
+### KI-029：SysUserMapper.selectByClientIdWithDomain 嵌套对象映射失效
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/mapper/SysUserMapper.java`
+
+**现象：**
+
+SQL 查询了 `d.domain_code` 和 `d.domain_name`，但 `SysUser` 实体中没有 `domainCode`/`domainName` 字段（仅有 `SysDomain domain` 嵌套对象且标注 `@TableField(exist = false)`）。MyBatis-Plus 的 `@Select` 注解不会自动将列映射到嵌套对象，这两个列会被静默丢弃，`user.getDomain()` 始终为 `null`。
+
+**建议：**
+
+- 使用 `@Results` + `@Result` 注解配置嵌套映射，或改用 XML Mapper 定义 resultMap，或删除此方法改用 Service 层关联查询。
+
+### KI-030：MqttClientService 中断连用户上下文永不清理
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/mqtt/MqttClientService.java`
+
+**现象：**
+
+`disconnectForUser` 将 `connected` 设为 false 但不从 `userContexts` 中移除 entry。若用户断开后不再调用 `closeAll`，该用户的 `UserMqttContext` 会永远留在 `userContexts` 中，造成内存泄漏。
+
+**建议：**
+
+- 添加定时清理任务，扫描 `userContexts` 中 `connected=false` 且超过一定时间未重连的条目并移除；或在 SSE 断开时自动触发 `closeAll`。
+
+### KI-031：AuthController.getCurrentUser 异常时返回 HTTP 200 而非 401
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/controller/AuthController.java`
+
+**现象：**
+
+当 JWT 解析失败或用户不存在时，catch 块返回 `ApiResponse.fail()`，HTTP 状态码仍为 200。前端若仅通过 HTTP 状态码判断请求成败，会误认为请求成功。
+
+**建议：**
+
+- 移除 try-catch，让异常自然传播到 `GlobalExceptionHandler`；或在 catch 中根据异常类型返回正确的 HTTP 状态码。
+
+### KI-032：ConnectionStatus checkConnection 存在竞态条件
+
+**优先级：** 必须修复
+
+**涉及位置：**
+
+- `frontend/src/components/ConnectionStatus.tsx`
+
+**现象：**
+
+`checkConnection` 通过闭包变量 `activeTimeoutId` / `activeController` 管理请求生命周期。新调用会 abort 旧控制器，但旧调用的 `catch` 块执行时会清除新调用的定时器和控制器引用，导致新请求的超时保护失效，且状态被错误地置为离线。
+
+**建议：**
+
+- 用请求序号（如 `requestId`）标识每次调用，catch 块中检查当前 requestId 是否仍为自己发起的，只清理属于自己的资源。
+
+### KI-033：AuthContext token 刷新可能触发无限循环
+
+**优先级：** 必须修复
+
+**涉及位置：**
+
+- `frontend/src/contexts/AuthContext.tsx`
+
+**现象：**
+
+`useEffect` 依赖 `[token]`，当 `/auth/me` 返回新 token 时，`persistSession` 调用 `setToken(nextToken)` 触发状态更新，导致 effect 重新执行，再次调用 `refreshProfile`，形成循环。
+
+**建议：**
+
+- 在 `refreshProfile` 中，仅当 `nextToken !== token` 时才调用 `persistSession` 更新 token；或将 token 更新逻辑从该 effect 中剥离，改用独立机制避免 effect 自我触发。
+
+### KI-034：api.ts 的 401 处理绕过 AuthContext.logout，未关闭服务端订阅会话
+
+**优先级：** 必须修复
+
+**涉及位置：**
+
+- `frontend/src/services/api.ts`
+- `frontend/src/contexts/AuthContext.tsx`
+
+**现象：**
+
+`request` 函数的 401 处理直接操作 `sessionStorage` 并用 `window.location.href` 跳转，完全绕过了 `AuthContext.logout()`。`logout()` 会调用 `api.closeSubscribeSession()` 关闭服务端 MQTT+SSE 会话，但 401 路径不会。
+
+**建议：**
+
+- 将 401 处理重构为调用统一的登出逻辑（如通过全局事件通知 AuthContext 执行 logout），而非在 api.ts 中重复清理逻辑。
+
+### KI-035：Publish 和 Subscribe 页面 api.getDomainTree() 缺少异常处理
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `frontend/src/pages/Publish.tsx`
+- `frontend/src/pages/Subscribe.tsx`
+
+**现象：**
+
+两处 `api.getDomainTree()` 调用只链了 `.then()` 没有 `.catch()`，若请求失败会产生 unhandled promise rejection，用户无任何反馈。
+
+**建议：**
+
+- 添加 `.catch()` 处理，给用户提示"域树加载失败"。
+
+### KI-036：NetworkSimulate api.getNetworkPresets() 缺少异常处理
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `frontend/src/pages/NetworkSimulate.tsx`
+
+**现象：**
+
+`api.getNetworkPresets()` 只有 `.finally()` 没有 `.catch()`，请求失败时产生 unhandled promise rejection。
+
+**建议：**
+
+- 添加 `.catch()` 并给用户提示加载失败。
+
+### KI-037：DomainManage 和 ClientManage 的 getDomainLabel 遇循环 parentId 会无限循环
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `frontend/src/pages/DomainManage.tsx`
+- `frontend/src/pages/ClientManage.tsx`
+
+**现象：**
+
+`getDomainLabel` 通过 `while` 循环沿 `parentId` 链向上遍历，但没有环检测。若数据存在循环引用，循环永不终止，导致浏览器卡死。
+
+**建议：**
+
+- 添加已访问 ID 集合（`Set<number>`），遍历时检测到重复 ID 即终止循环。
+
+### KI-038：AuditLog 分页切换触发双重 API 请求
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `frontend/src/pages/AuditLog.tsx`
+
+**现象：**
+
+分页 `onChange` 同时调用 `setPage(p)` 和 `fetchLogs(p)`，而 `useEffect` 也依赖 `[page]` 并调用 `fetchLogs()`。这导致切换页码时同一页数据被请求两次。
+
+**建议：**
+
+- 移除 `onChange` 中的 `fetchLogs(p)` 调用，仅依赖 `useEffect` 响应 `page` 变化来触发请求。
+
+### KI-039：SubscribeContext doCancelTopic 取消订阅失败时无用户反馈
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `frontend/src/contexts/SubscribeContext.tsx`
+
+**现象：**
+
+`doCancelTopic` 的 catch 块仅 `console.error`，没有向用户展示任何错误提示。用户点击"取消订阅"后若请求失败，界面无任何反馈。
+
+**建议：**
+
+- 在 catch 块中添加 `message.error('取消订阅失败，请重试')` 或类似提示。
+
+### KI-040：AuthContext refreshProfile 错误被静默吞没
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `frontend/src/contexts/AuthContext.tsx`
+
+**现象：**
+
+`refreshProfile` 的 catch 块为空，非 401 类错误（如网络断开）被完全忽略，用户无法得知会话验证失败。
+
+**建议：**
+
+- 在非 cancelled 的 catch 中添加日志记录或轻量提示，让开发者/用户感知到会话验证异常。
+
+### KI-041：PublishContext 切换消息格式时未自动填充示例载荷
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `frontend/src/contexts/PublishContext.tsx`
+
+**现象：**
+
+文件顶部设计注释明确写道"切换消息格式时自动填充对应的示例载荷模板"，但 `handleSetFormat` 实现只更新了 `format` 状态，没有同步更新 `payload`。
+
+**建议：**
+
+- 在 `handleSetFormat` 中根据 `newFormat` 自动设置对应的示例载荷。
+
+### KI-042：EMQX 初始 ACL 同步失败后不会继续重试
+
+**优先级：** 必须修复
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/config/EmqxAclSyncInitializer.java`
+- `backend/src/main/java/com/cde/service/impl/AclServiceImpl.java`
+
+**现象：**
+
+启动初始化逻辑只在 EMQX HTTP API 未就绪时继续循环重试。一旦 `isApiReady()` 返回 true，随后 `aclService.syncToEmqx()` 如果因为授权源清空、启用或规则推送的临时异常而抛错，异常会被外层 catch 捕获并直接结束初始化流程，不再尝试剩余次数。
+
+**影响：**
+
+后端应用会继续启动，但数据库中的 ACL 规则没有同步到 EMQX。发布和订阅可能使用空规则或旧规则，直到管理员手动调用 ACL 同步接口。
+
+**建议：**
+
+- 将 `syncToEmqx()` 纳入重试循环，区分“API 未就绪”和“同步失败”两类失败。
+- 每次同步失败后继续等待并重试，全部失败后记录清晰告警。
+
+### KI-043：用户删除或改名不会清理、迁移 ACL
+
+**优先级：** 必须修复
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/controller/ClientController.java`
+- `backend/src/main/resources/db/schema.sql`
+- `backend/src/main/java/com/cde/service/impl/AclServiceImpl.java`
+
+**现象：**
+
+删除用户只执行 `userMapper.deleteById(id)`，更新用户也允许修改 `username`。ACL 表中的 `username` 是普通字符串列，没有外键、级联删除或迁移逻辑。用户删除后，其 ACL 规则仍留在数据库和 EMQX 侧；用户改名后，旧用户名对应的 ACL 也不会自动迁移。
+
+**影响：**
+
+后续创建同名用户时会继承旧发布/订阅权限；改名用户也可能出现 Web 身份与 MQTT ACL 不一致，形成权限残留。
+
+**建议：**
+
+- 删除用户时同步删除或禁用该用户 ACL，并触发 EMQX 全量同步。
+- 若允许改名，应在同一事务内迁移 ACL；若不允许改名，应在更新接口中禁止修改 `username`。
+
+### KI-044：adminOnly 路由在用户资料恢复前误判管理员
+
+**优先级：** 必须修复
+
+**涉及位置：**
+
+- `frontend/src/contexts/AuthContext.tsx`
+- `frontend/src/components/ProtectedRoute.tsx`
+- `backend/src/main/java/com/cde/controller/AuthController.java`
+
+**现象：**
+
+前端从 `sessionStorage` 恢复 token 后立即将 `isAuthenticated` 视为 true，但用户资料可能仍在 `/auth/me` 异步恢复过程中。此时 `ProtectedRoute` 对 `adminOnly` 页面直接判断 `user?.roleType`，当 `user` 暂时为 null 时会把有效管理员误判为非管理员并跳转到 `/publish`。
+
+**影响：**
+
+管理员刷新 `/dashboard`、`/domains`、`/clients`、`/acl`、`/audit` 或 `/network` 等管理页时，可能被错误踢到普通发布页。
+
+**建议：**
+
+- 在认证上下文中增加 `authLoading` 或 `profileReady` 状态，用户资料恢复完成前不要做 adminOnly 判定。
+- `ProtectedRoute` 在资料恢复中展示加载状态，恢复失败再执行登出或跳转。
+
+### KI-045：Broker 取消订阅失败仍返回成功
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/mqtt/MqttClientService.java`
+- `backend/src/main/java/com/cde/controller/SubscribeController.java`
+- `frontend/src/contexts/SubscribeContext.tsx`
+
+**现象：**
+
+`unsubscribeForUser` 先从本地 `subscribedTopics` 移除主题，再向 Broker 发送 UNSUBSCRIBE。如果 Broker 取消失败，catch 块只记录 warn 并忽略异常，Controller 仍返回“已取消订阅”。前端刷新状态后也只能看到本地记忆已删除，无法感知 Broker 侧仍可能保留订阅。
+
+**影响：**
+
+前端、本地订阅记忆和 Broker 实际订阅状态可能不一致。用户以为取消成功，但后续仍可能收到对应主题消息。
+
+**建议：**
+
+- Broker 取消失败时返回明确错误，或先确认 Broker 取消成功后再移除本地订阅记忆。
+- 对需要保留“尽力取消”的场景，返回带状态的部分成功响应并提示用户重试。
+
+### KI-046：多个更新/删除接口忽略受影响行数
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/controller/ClientController.java`
+- `backend/src/main/java/com/cde/service/impl/AclServiceImpl.java`
+- `backend/src/main/java/com/cde/service/impl/DomainServiceImpl.java`
+
+**现象：**
+
+多个更新或删除路径没有检查 `updateById`、`deleteById` 的受影响行数。`ClientController.update` 更新后直接 `selectById` 并解引用结果，传入不存在的 ID 时可能 NPE；ACL 和安全域更新删除也可能在资源不存在时返回成功或继续同步。
+
+**影响：**
+
+客户端无法区分“资源不存在”和“操作成功”，审计与排障也会被误导。部分路径会直接变成 500。
+
+**建议：**
+
+- 检查更新/删除返回值，未命中时返回 404 或业务错误。
+- 更新后读取结果前先判空，避免 NPE。
+
+### KI-047：登录失败的 401 被全局当作会话过期处理
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `frontend/src/services/api.ts`
+- `frontend/src/pages/Login.tsx`
+- `backend/src/main/java/com/cde/exception/GlobalExceptionHandler.java`
+
+**现象：**
+
+后端登录失败会返回 HTTP 401 和 `AUTH_FAILED` 错误码，但前端 `request` 对所有 401 都直接清理 sessionStorage 并跳转 `/login`，没有先解析错误体。登录页输入错误密码时，后端返回的“密码错误”等业务提示可能被“认证已过期”替代，甚至触发页面重载。
+
+**影响：**
+
+用户无法获得准确登录失败原因，前端也难以区分“登录接口认证失败”和“已登录会话过期”。
+
+**建议：**
+
+- 对 `/auth/login` 的 401 保留后端错误体，不执行全局会话过期跳转。
+- 或在 `request` 中按错误码区分 `AUTH_FAILED` 与 `UNAUTHORIZED`。
+
+### KI-048：refresh token 契约不可用且文档、DTO、前端服务不一致
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `docs/api.md`
+- `frontend/src/services/api.ts`
+- `backend/src/main/java/com/cde/dto/LoginResponse.java`
+- `backend/src/main/java/com/cde/service/impl/AuthServiceImpl.java`
+
+**现象：**
+
+文档描述登录响应包含 `refreshToken`、`expiresIn`，刷新接口应提交 refresh token；但后端 `LoginResponse` 只有 `token` 和 `expires`，刷新逻辑实际校验旧 access token，过期后会直接拒绝。前端虽然导出了 `api.refreshToken()`，当前页面并未形成可用的 refresh token 流程。
+
+**影响：**
+
+Access token 过期后无法按文档刷新，调用方会误以为系统支持 refresh token 机制，实际只能重新登录。
+
+**建议：**
+
+- 要么实现真正的 refresh token 字段、存储与刷新流程，要么删除文档和前端服务中对 refresh token 的暗示。
+- 统一字段名，例如明确使用 `expires` 或 `expiresIn`，避免接口契约漂移。
+
+### KI-049：NetworkController 弱网模拟命令超时保护不可靠
+
+**优先级：** 建议修改
+
+**涉及位置：**
+
+- `backend/src/main/java/com/cde/controller/NetworkController.java`
+
+**现象：**
+
+`executeCommand` 启动子进程后，先同步读取进程输出流，等输出流关闭后才调用 `waitFor(timeout)`。如果 `sh`、`tc` 或 `ip` 子进程卡住且 stdout 不关闭，请求线程会阻塞在读取输出阶段，30 秒超时保护无法生效。
+
+**影响：**
+
+管理员反复调用弱网模拟接口时，卡住的子进程可能长期占用后端请求线程，造成管理接口不可用。
+
+**建议：**
+
+- 先用 `waitFor(timeout)` 控制进程生命周期，再读取已收集输出；或异步消费 stdout/stderr。
+- 超时后确保 `destroyForcibly()` 并回收进程资源。
