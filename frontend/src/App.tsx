@@ -8,9 +8,9 @@
  * - 管理类路由（dashboard/domains/clients/acl/audit/network）均通过
  *   ProtectedRoute adminOnly 进行角色守卫
  */
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, Spin } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SubscribeProvider } from './contexts/SubscribeContext';
@@ -18,15 +18,22 @@ import { PublishProvider } from './contexts/PublishContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './layouts/MainLayout';
 import ConnectionStatus from './components/ConnectionStatus';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Publish from './pages/Publish';
-import Subscribe from './pages/Subscribe';
-import DomainManage from './pages/DomainManage';
-import ClientManage from './pages/ClientManage';
-import AclManage from './pages/AclManage';
-import AuditLog from './pages/AuditLog';
-import NetworkSimulate from './pages/NetworkSimulate';
+
+const Login = lazy(() => import('./pages/Login'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Publish = lazy(() => import('./pages/Publish'));
+const Subscribe = lazy(() => import('./pages/Subscribe'));
+const DomainManage = lazy(() => import('./pages/DomainManage'));
+const ClientManage = lazy(() => import('./pages/ClientManage'));
+const AclManage = lazy(() => import('./pages/AclManage'));
+const AuditLog = lazy(() => import('./pages/AuditLog'));
+const NetworkSimulate = lazy(() => import('./pages/NetworkSimulate'));
+
+const RouteFallback = () => (
+  <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <Spin />
+  </div>
+);
 
 /**
  * 默认路由：根据用户角色重定向到对应首页
@@ -35,7 +42,11 @@ import NetworkSimulate from './pages/NetworkSimulate';
  * - 普通用户 → /publish（数据发布）
  */
 const DefaultRoute: React.FC = () => {
-  const { isAuthenticated, user } = useAuth();
+  const { authLoading, isAuthenticated, profileReady, user } = useAuth();
+
+  if (authLoading || (isAuthenticated && !profileReady)) {
+    return <RouteFallback />;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -107,6 +118,7 @@ function App() {
         <PublishProvider>
           <SubscribeProvider>
             <ConnectionStatus />
+            <Suspense fallback={<RouteFallback />}>
             <Routes>
             <Route path="/login" element={<Login />} />
             <Route
@@ -170,6 +182,7 @@ function App() {
             <Route path="/" element={<DefaultRoute />} />
             <Route path="*" element={<DefaultRoute />} />
           </Routes>
+          </Suspense>
           </SubscribeProvider>
         </PublishProvider>
       </AuthProvider>

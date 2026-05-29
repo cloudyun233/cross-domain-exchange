@@ -66,7 +66,10 @@ public class AclServiceImpl implements AclService {
         try {
             List<SysTopicAcl> beforeRules = aclMapper.selectList(null);
             acl.setId(id);
-            aclMapper.updateById(acl);
+            int updated = aclMapper.updateById(acl);
+            if (updated == 0) {
+                throw new BusinessException(HttpStatus.NOT_FOUND, "ACL规则不存在");
+            }
             syncCurrentRulesWithRestore(beforeRules);
             return aclMapper.selectById(id);
         } finally {
@@ -82,7 +85,26 @@ public class AclServiceImpl implements AclService {
         boolean unlockOnExit = lockAclSyncUntilTransactionComplete();
         try {
             List<SysTopicAcl> beforeRules = aclMapper.selectList(null);
-            aclMapper.deleteById(id);
+            int deleted = aclMapper.deleteById(id);
+            if (deleted == 0) {
+                throw new BusinessException(HttpStatus.NOT_FOUND, "ACL规则不存在");
+            }
+            syncCurrentRulesWithRestore(beforeRules);
+        } finally {
+            if (unlockOnExit) {
+                aclSyncLock.unlock();
+            }
+        }
+    }
+
+    @Override
+    @Transactional
+    public void deleteByUsername(String username) {
+        boolean unlockOnExit = lockAclSyncUntilTransactionComplete();
+        try {
+            List<SysTopicAcl> beforeRules = aclMapper.selectList(null);
+            aclMapper.delete(new LambdaQueryWrapper<SysTopicAcl>()
+                    .eq(SysTopicAcl::getUsername, username));
             syncCurrentRulesWithRestore(beforeRules);
         } finally {
             if (unlockOnExit) {

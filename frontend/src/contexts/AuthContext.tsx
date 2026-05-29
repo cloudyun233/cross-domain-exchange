@@ -1,17 +1,16 @@
-/**
- * 认证上下文 —— 管理用户登录态、JWT Token 与会话持久化
- *
- * 核心设计：
- * - 使用 sessionStorage 持久化 token 和 user，刷新页面不丢失但关闭标签页即失效
- * - 登录成功后通过 toUser() 将后端响应映射为前端 User 结构
- * - token 变化时自动调用 /auth/me 刷新用户信息（跳过刚登录的那次，避免重复请求）
- * - 退出时清理 sessionStorage 并通知后端关闭订阅会话
- */
-import React, { ReactNode, createContext, useContext, useEffect, useRef, useState } from 'react';
-import { api } from '../services/api';
+import React, {
+  ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { message } from 'antd';
+import { AUTH_UNAUTHORIZED_EVENT, ApiError, api } from '../services/api';
 
-/** 用户信息结构，对应后端 /auth/me 返回的用户字段 */
-interface User {
+export interface User {
   username: string;
   roleType: string;
   roleName: string;
@@ -20,29 +19,40 @@ interface User {
   clientId: string;
 }
 
-/** 认证上下文接口 */
+interface LogoutOptions {
+  remote?: boolean;
+}
+
+interface StoredSession {
+  token: string | null;
+  user: User | null;
+  profileReady: boolean;
+}
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (username: string, password: string) => Promise<void>;
-  logout: () => void;
+  login: (username: string, password: string) => Promise<User>;
+  logout: (options?: LogoutOptions) => void;
   isAuthenticated: boolean;
+  authLoading: boolean;
+  profileReady: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
-  login: async () => {},
+  login: async () => {
+    throw new Error('AuthProvider is not mounted');
+  },
   logout: () => {},
   isAuthenticated: false,
+  authLoading: false,
+  profileReady: true,
 });
 
 export const useAuth = () => useContext(AuthContext);
 
-/**
- * 将后端返回的用户数据映射为前端 User 结构
- * 后端返回的 payload 包含额外字段（如 token），此函数仅提取 UI 层所需字段
- */
 function toUser(payload: any): User {
   return {
     username: payload.username,
@@ -54,67 +64,138 @@ function toUser(payload: any): User {
   };
 }
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = sessionStorage.getItem('user');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('token'));
-  const justLoggedInRef = useRef(false);
+function clearStoredSession() {
+  sessionStorage.removeItem('token');
+  sessionStorage.removeItem('user');
+}
 
-  /** 将 token 和 user 同步写入 state 与 sessionStorage */
-  const persistSession = (nextToken: string, nextUser: User) => {
-    setToken(nextToken);
+function loadStoredSession(): StoredSession {
+  const token = sessionStorage.getItem('token');
+  const savedUser = sessionStorage.getItem('user');
+
+  if (!token) {
+    clearStoredSession();
+    return { token: null, user: null, profileReady: true };
+  }
+
+  if (!savedUser) {
+    return { token, user: null, profileReady: false };
+  }
+
+  try {
+    return { token, user: toUser(JSON.parse(savedUser)), profileReady: false };
+  } catch {
+    clearStoredSession();
+    return { token: null, user: null, profileReady: true };
+  }
+}
+
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const initialSession = useRef(loadStoredSession()).current;
+  const [user, setUser] = useState<User | null>(initialSession.user);
+  const [token, setToken] = useState<string | null>(initialSession.token);
+  const [profileReady, setProfileReady] = useState(initialSession.profileReady);
+  const [authLoading, setAuthLoading] = useState(Boolean(initialSession.token));
+  const justLoggedInRef = useRef(false);
+  const loggingOutRef = useRef(false);
+  const userRef = useRef<User | null>(initialSession.user);
+
+  const persistSession = useCallback((nextToken: string, nextUser: User) => {
+    userRef.current = nextUser;
     setUser(nextUser);
     sessionStorage.setItem('token', nextToken);
     sessionStorage.setItem('user', JSON.stringify(nextUser));
-  };
+    setToken((currentToken) => currentToken === nextToken ? currentToken : nextToken);
+  }, []);
 
-  const login = async (username: string, password: string) => {
+  const logout = useCallback((options: LogoutOptions = {}) => {
+    const remote = options.remote !== false;
+    const hadToken = Boolean(sessionStorage.getItem('token'));
+
+    if (remote && hadToken && !loggingOutRef.current) {
+      loggingOutRef.current = true;
+      void api.closeSubscribeSession().catch(() => {
+        // Session cleanup should not block local logout.
+      }).finally(() => {
+        loggingOutRef.current = false;
+      });
+    }
+
+    setToken(null);
+    userRef.current = null;
+    setUser(null);
+    setAuthLoading(false);
+    setProfileReady(true);
+    clearStoredSession();
+  }, []);
+
+  const login = useCallback(async (username: string, password: string) => {
     const result = await api.login({ username, password });
-    if (!result.success) throw new Error(result.message);
+    if (!result.success) throw new Error(result.message || 'Login failed');
 
     const nextUser = toUser(result.data);
     justLoggedInRef.current = true;
     persistSession(result.data.token, nextUser);
-  };
+    setAuthLoading(false);
+    setProfileReady(true);
+    return nextUser;
+  }, [persistSession]);
 
-  const logout = () => {
-    void api.closeSubscribeSession().catch(() => {
-      // ignore logout cleanup errors
-    });
-    setToken(null);
-    setUser(null);
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
-  };
+  useEffect(() => {
+    const handleUnauthorized = (event: Event) => {
+      if (loggingOutRef.current) return;
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      message.warning(detail?.message || 'Session expired. Please log in again.');
+      logout({ remote: true });
+    };
+
+    window.addEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(AUTH_UNAUTHORIZED_EVENT, handleUnauthorized);
+  }, [logout]);
 
   useEffect(() => {
     if (!token) {
+      setAuthLoading(false);
+      setProfileReady(true);
       return;
     }
 
-    // 刚登录时跳过刷新，因为 login() 已经拿到了最新用户信息
     if (justLoggedInRef.current) {
       justLoggedInRef.current = false;
+      setAuthLoading(false);
+      setProfileReady(true);
       return;
     }
 
     let cancelled = false;
 
-    // token 变化时（如页面刷新从 sessionStorage 恢复），向后端请求最新用户信息
     const refreshProfile = async () => {
+      setAuthLoading(true);
+      setProfileReady(false);
       try {
         const result = await api.getCurrentUser();
-        if (!result.success || cancelled) {
+        if (cancelled) return;
+
+        if (!result.success) {
+          message.warning(result.message || 'Failed to validate session.');
+          if (!userRef.current) logout({ remote: false });
           return;
         }
 
         const nextUser = toUser(result.data);
         const nextToken = result.data.token || token;
         persistSession(nextToken, nextUser);
-      } catch {
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 401) {
+          return;
+        }
+        message.warning((err as Error)?.message || 'Failed to validate session.');
+        if (!userRef.current) logout({ remote: false });
+      } finally {
         if (!cancelled) {
+          setAuthLoading(false);
+          setProfileReady(true);
         }
       }
     };
@@ -124,10 +205,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [logout, persistSession, token]);
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        login,
+        logout,
+        isAuthenticated: Boolean(token),
+        authLoading,
+        profileReady,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

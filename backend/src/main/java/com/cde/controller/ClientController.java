@@ -1,14 +1,22 @@
 package com.cde.controller;
 
 import com.cde.dto.ApiResponse;
+import com.cde.entity.SysDomain;
+import com.cde.exception.BusinessException;
 import com.cde.entity.SysUser;
+import com.cde.mapper.SysDomainMapper;
 import com.cde.mapper.SysUserMapper;
+import com.cde.service.AclService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * 用户/客户端管理 REST API
@@ -30,8 +38,12 @@ import java.util.List;
 @PreAuthorize("hasRole('ADMIN')")
 public class ClientController {
 
+    private static final Set<String> VALID_ROLES = Set.of("admin", "producer", "consumer");
+
     private final SysUserMapper userMapper;
+    private final SysDomainMapper domainMapper;
     private final PasswordEncoder passwordEncoder;
+    private final AclService aclService;
 
     /**
      * 查询全部用户
@@ -73,6 +85,7 @@ public class ClientController {
      */
     @PostMapping
     public ApiResponse<SysUser> create(@RequestBody SysUser user) {
+        validateUserFields(user);
         user.setPasswordHash(passwordEncoder.encode(user.getPasswordHash()));
         user.setClientId(user.getUsername() + "_001");
         userMapper.insert(user);
@@ -92,13 +105,26 @@ public class ClientController {
      */
     @PutMapping("/{id}")
     public ApiResponse<SysUser> update(@PathVariable Long id, @RequestBody SysUser user) {
+        SysUser existing = requireUser(id);
+        if (user.getUsername() != null && !Objects.equals(user.getUsername(), existing.getUsername())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "用户名不允许修改");
+        }
+        if (user.getClientId() != null && !Objects.equals(user.getClientId(), existing.getClientId())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "clientId不允许修改");
+        }
+        user.setUsername(null);
+        user.setClientId(null);
+        validateUserFields(user);
         user.setId(id);
         if (user.getPasswordHash() != null && !user.getPasswordHash().equals("***")) {
             user.setPasswordHash(passwordEncoder.encode(user.getPasswordHash()));
         } else {
             user.setPasswordHash(null);
         }
-        userMapper.updateById(user);
+        int updatedRows = userMapper.updateById(user);
+        if (updatedRows == 0) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "用户不存在");
+        }
         SysUser updated = userMapper.selectById(id);
         updated.setPasswordHash("***");
         return ApiResponse.ok("用户更新成功", updated);
@@ -110,8 +136,43 @@ public class ClientController {
      * @param id 用户 ID
      */
     @DeleteMapping("/{id}")
+    @Transactional
     public ApiResponse<Void> delete(@PathVariable Long id) {
-        userMapper.deleteById(id);
+        SysUser user = requireUser(id);
+        aclService.deleteByUsername(user.getUsername());
+        int deleted = userMapper.deleteById(id);
+        if (deleted == 0) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "用户不存在");
+        }
         return ApiResponse.ok("用户删除成功", null);
+    }
+
+    private SysUser requireUser(Long id) {
+        SysUser user = userMapper.selectById(id);
+        if (user == null) {
+            throw new BusinessException(HttpStatus.NOT_FOUND, "用户不存在");
+        }
+        return user;
+    }
+
+    private void validateUserFields(SysUser user) {
+        String roleType = user.getRoleType();
+        if (roleType == null || !VALID_ROLES.contains(roleType)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "角色类型不合法");
+        }
+        if ("admin".equals(roleType)) {
+            user.setDomainId(null);
+            return;
+        }
+        if (user.getDomainId() == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "非管理员用户必须绑定安全域");
+        }
+        SysDomain domain = domainMapper.selectById(user.getDomainId());
+        if (domain == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "所属安全域不存在");
+        }
+        if (!Objects.equals(domain.getStatus(), 1)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "所属安全域已禁用");
+        }
     }
 }

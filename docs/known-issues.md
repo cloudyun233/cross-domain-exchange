@@ -2,61 +2,61 @@
 
 本文记录 2026-05-19 基于用户使用流程完成的全仓库审查结果，并于 2026-05-22 再次复核补充，2026-05-23 第三轮并行审阅验证，2026-05-24 追加第四轮并行复核发现。审查路径覆盖登录、发布、订阅、ACL 管理、域管理、用户管理、审计、监控与 Docker/EMQX 部署配置。
 
-> 当前状态：后端现有测试通过，前端可完成生产构建。以下问题属于已知风险，尚未在代码中修复。
+> 当前状态：2026-05-30 已完成本轮修复；KI-001、KI-002、KI-005、KI-006、KI-007、KI-015、KI-027 按用户确认范围暂不处理，其余条目已在代码和测试中处理。
 
 ## 问题总览
 
 | 编号 | 优先级 | 问题 | 主要影响 | 状态 |
 | --- | --- | --- | --- | --- |
-| KI-001 | 必须修复 | H2 Console 在 Docker 默认运行路径中公开可访问 | 数据库控制台可能被外部访问 | 待处理 |
-| KI-002 | 必须修复 | JWT、EMQX API Key、集群 Cookie、MySQL 密码硬编码进仓库 | 可伪造令牌或操作 Broker 管理 API | 待处理 |
-| KI-003 | 必须修复 | 用户删除、角色变更、域禁用后旧 JWT 仍可继续使用 | 账号撤权不会立即生效 | 待处理 |
-| KI-004 | 必须修复 | 安全域可被改出父子环，登录时可能陷入循环 | 影响登录与域路径生成 | 待处理 |
-| KI-005 | 建议修改 | EMQX Webhook 审计入口无来源校验 | 审计日志可被伪造或刷入大量噪声 | 待处理 |
-| KI-006 | 建议修改 | 发布/订阅消息正文会进入服务端日志 | 敏感业务数据可能落盘 | 待处理 |
-| KI-007 | 建议修改 | Docker 场景允许 TLS 降级到明文 TCP，且明文端口对宿主开放 | MQTT 传输链路安全性不足 | 待处理 |
-| KI-008 | 建议修改 | 前端主包较大，首屏加载压力偏高 | 首次访问体验变慢 | 待处理 |
-| KI-009 | 建议修改 | SSE 重连耗尽后无法在页面内恢复 | 订阅页实时消息通道只能靠刷新页面恢复 | 待处理 |
-| KI-010 | 建议修改 | 登录后重定向直接读取 sessionStorage 用户信息 | 登录跳转依赖两套用户数据源 | 待处理 |
-| KI-011 | 必须修复 | 刷新或重连后已恢复订阅无法取消 | 用户无法取消已记忆的订阅 | 待处理 |
-| KI-012 | 必须修复 | sessionStorage 中用户数据损坏会导致前端崩溃 | 用户只能手动清理浏览器存储恢复 | 待处理 |
-| KI-013 | 必须修复 | 非法或过期 JWT 不会稳定触发退出登录 | 用户可能卡在已登录但接口不可用状态 | 待处理 |
-| KI-014 | 必须修复 | 安全域编码未校验就拼入 MQTT 主题路径 | 主题树、发布、订阅和 ACL 匹配可能异常 | 待处理 |
-| KI-015 | 建议修改 | 连接状态检查把后端和 EMQX 状态耦合 | 单路失败会误报另一服务离线 | 待处理 |
-| KI-016 | 建议修改 | 审计日志页面缺少 Schema 校验失败类型映射 | 事件显示、筛选和高亮不完整 | 待处理 |
-| KI-017 | 建议修改 | 审计日志 PDF 导出一次性加载全量日志 | 日志增长后可能超时或造成内存压力 | 待处理 |
-| KI-018 | 必须修复 | MybatisPlusConfig 硬编码 DbType.H2，MySQL 环境分页 SQL 方言错误 | 生产环境切换 MySQL 后分页查询可能报错 | 待处理 |
-| KI-019 | 必须修复 | JwtAuthenticationFilter 中 roleType 为 null 时抛出 NPE | 缺少 roleType 声明的 JWT 导致服务端 500 | 待处理 |
-| KI-020 | 必须修复 | EmqxApiClient 中 username 未编码直接拼入 URL 路径 | 路径注入风险，ACL 规则同步异常 | 待处理 |
-| KI-021 | 必须修复 | ClientController.update 缺少字段校验，可设置非法 roleType 和 domainId | 权限配置错乱，MQTT 主题路径异常 | 待处理 |
-| KI-022 | 必须修复 | MqttClientService.subscribeForUser 未校验 QoS 值，非法值致 NPE | 非法 QoS 导致订阅请求 500 崩溃 | 待处理 |
-| KI-023 | 建议修改 | AuditServiceImpl 中 IPv6 地址解析逻辑错误 | IPv6 环境审计日志 IP 不正确 | 待处理 |
-| KI-024 | 建议修改 | LoginRequest 缺少参数校验，null 用户名/密码致 NPE | 缺少输入校验导致错误信息不友好 | 待处理 |
-| KI-025 | 建议修改 | MqttClientService.connectForUser 存在并发竞态，同一用户可能创建多个连接 | MQTT 连接泄漏 | 待处理 |
-| KI-026 | 建议修改 | SubscribeServiceImpl.openSse 生命周期非原子，存在并发覆盖风险 | 并发打开 SSE 时消息推送可能丢失 | 待处理 |
-| KI-027 | 建议修改 | ClientController.create 中 clientId 无唯一性保证 | 重复 clientId 导致 MQTT 连接互踢 | 待处理 |
-| KI-028 | 建议修改 | AuditController 分页查询无上限约束，大 size 值可致 OOM | 恶意大分页请求耗尽 JVM 堆内存 | 待处理 |
-| KI-029 | 建议修改 | SysUserMapper.selectByClientIdWithDomain 嵌套对象映射失效 | domain 字段永远为 null | 待处理 |
-| KI-030 | 建议修改 | MqttClientService 中断连用户上下文永不清理 | userContexts 内存泄漏 | 待处理 |
-| KI-031 | 建议修改 | AuthController.getCurrentUser 异常时返回 HTTP 200 而非 401 | 前端无法正确识别认证失败 | 待处理 |
-| KI-032 | 必须修复 | ConnectionStatus checkConnection 存在竞态条件 | 旧调用的 catch 清除新调用的定时器和控制器 | 待处理 |
-| KI-033 | 必须修复 | AuthContext token 刷新可能触发无限循环 | 后端 token 轮换时前端无限请求 /auth/me | 待处理 |
-| KI-034 | 必须修复 | api.ts 的 401 处理绕过 AuthContext.logout，未关闭服务端订阅会话 | JWT 过期时服务端 MQTT+SSE 会话泄漏 | 待处理 |
-| KI-035 | 建议修改 | Publish 和 Subscribe 页面 api.getDomainTree() 缺少异常处理 | 域树加载失败用户无反馈 | 待处理 |
-| KI-036 | 建议修改 | NetworkSimulate api.getNetworkPresets() 缺少异常处理 | 预设加载失败用户无反馈 | 待处理 |
-| KI-037 | 建议修改 | DomainManage 和 ClientManage 的 getDomainLabel 遇循环 parentId 会无限循环 | 循环引用时浏览器卡死 | 待处理 |
-| KI-038 | 建议修改 | AuditLog 分页切换触发双重 API 请求 | 每次翻页产生一次无意义的额外请求 | 待处理 |
-| KI-039 | 建议修改 | SubscribeContext doCancelTopic 取消订阅失败时无用户反馈 | 用户以为取消成功但服务端订阅仍存在 | 待处理 |
-| KI-040 | 建议修改 | AuthContext refreshProfile 错误被静默吞没 | 会话验证失败用户无预警 | 待处理 |
-| KI-041 | 建议修改 | PublishContext 切换消息格式时未自动填充示例载荷 | 与设计注释不符，降低使用效率 | 待处理 |
-| KI-042 | 必须修复 | EMQX 初始 ACL 同步失败后不会继续重试 | 应用启动后可能使用空或旧 ACL 规则 | 待处理 |
-| KI-043 | 必须修复 | 用户删除或改名不会清理、迁移 ACL | 旧权限可能被下一任同名用户继承 | 待处理 |
-| KI-044 | 必须修复 | adminOnly 路由在用户资料恢复前误判管理员 | 管理员刷新管理页会被跳转到普通页面 | 待处理 |
-| KI-045 | 建议修改 | Broker 取消订阅失败仍返回成功 | 前端、本地记忆与 Broker 订阅状态可能不一致 | 待处理 |
-| KI-046 | 建议修改 | 多个更新/删除接口忽略受影响行数 | 不存在资源可能返回成功或 500 | 待处理 |
-| KI-047 | 建议修改 | 登录失败的 401 被全局当作会话过期处理 | 密码错误等认证失败提示被吞掉 | 待处理 |
-| KI-048 | 建议修改 | refresh token 契约不可用且文档、DTO、前端服务不一致 | Access token 过期后无法按文档刷新 | 待处理 |
-| KI-049 | 建议修改 | NetworkController 弱网模拟命令超时保护不可靠 | 子进程卡住时请求线程可能长期阻塞 | 待处理 |
+| KI-001 | 必须修复 | H2 Console 在 Docker 默认运行路径中公开可访问 | 数据库控制台可能被外部访问 | 暂不处理 |
+| KI-002 | 必须修复 | JWT、EMQX API Key、集群 Cookie、MySQL 密码硬编码进仓库 | 可伪造令牌或操作 Broker 管理 API | 暂不处理 |
+| KI-003 | 必须修复 | 用户删除、角色变更、域禁用后旧 JWT 仍可继续使用 | 账号撤权不会立即生效 | 已处理 |
+| KI-004 | 必须修复 | 安全域可被改出父子环，登录时可能陷入循环 | 影响登录与域路径生成 | 已处理 |
+| KI-005 | 建议修改 | EMQX Webhook 审计入口无来源校验 | 审计日志可被伪造或刷入大量噪声 | 暂不处理 |
+| KI-006 | 建议修改 | 发布/订阅消息正文会进入服务端日志 | 敏感业务数据可能落盘 | 暂不处理 |
+| KI-007 | 建议修改 | Docker 场景允许 TLS 降级到明文 TCP，且明文端口对宿主开放 | MQTT 传输链路安全性不足 | 暂不处理 |
+| KI-008 | 建议修改 | 前端主包较大，首屏加载压力偏高 | 首次访问体验变慢 | 已处理 |
+| KI-009 | 建议修改 | SSE 重连耗尽后无法在页面内恢复 | 订阅页实时消息通道只能靠刷新页面恢复 | 已处理 |
+| KI-010 | 建议修改 | 登录后重定向直接读取 sessionStorage 用户信息 | 登录跳转依赖两套用户数据源 | 已处理 |
+| KI-011 | 必须修复 | 刷新或重连后已恢复订阅无法取消 | 用户无法取消已记忆的订阅 | 已处理 |
+| KI-012 | 必须修复 | sessionStorage 中用户数据损坏会导致前端崩溃 | 用户只能手动清理浏览器存储恢复 | 已处理 |
+| KI-013 | 必须修复 | 非法或过期 JWT 不会稳定触发退出登录 | 用户可能卡在已登录但接口不可用状态 | 已处理 |
+| KI-014 | 必须修复 | 安全域编码未校验就拼入 MQTT 主题路径 | 主题树、发布、订阅和 ACL 匹配可能异常 | 已处理 |
+| KI-015 | 建议修改 | 连接状态检查把后端和 EMQX 状态耦合 | 单路失败会误报另一服务离线 | 暂不处理 |
+| KI-016 | 建议修改 | 审计日志页面缺少 Schema 校验失败类型映射 | 事件显示、筛选和高亮不完整 | 已处理 |
+| KI-017 | 建议修改 | 审计日志 PDF 导出一次性加载全量日志 | 日志增长后可能超时或造成内存压力 | 已处理 |
+| KI-018 | 必须修复 | MybatisPlusConfig 硬编码 DbType.H2，MySQL 环境分页 SQL 方言错误 | 生产环境切换 MySQL 后分页查询可能报错 | 已处理 |
+| KI-019 | 必须修复 | JwtAuthenticationFilter 中 roleType 为 null 时抛出 NPE | 缺少 roleType 声明的 JWT 导致服务端 500 | 已处理 |
+| KI-020 | 必须修复 | EmqxApiClient 中 username 未编码直接拼入 URL 路径 | 路径注入风险，ACL 规则同步异常 | 已处理 |
+| KI-021 | 必须修复 | ClientController.update 缺少字段校验，可设置非法 roleType 和 domainId | 权限配置错乱，MQTT 主题路径异常 | 已处理 |
+| KI-022 | 必须修复 | MqttClientService.subscribeForUser 未校验 QoS 值，非法值致 NPE | 非法 QoS 导致订阅请求 500 崩溃 | 已处理 |
+| KI-023 | 建议修改 | AuditServiceImpl 中 IPv6 地址解析逻辑错误 | IPv6 环境审计日志 IP 不正确 | 已处理 |
+| KI-024 | 建议修改 | LoginRequest 缺少参数校验，null 用户名/密码致 NPE | 缺少输入校验导致错误信息不友好 | 已处理 |
+| KI-025 | 建议修改 | MqttClientService.connectForUser 存在并发竞态，同一用户可能创建多个连接 | MQTT 连接泄漏 | 已处理 |
+| KI-026 | 建议修改 | SubscribeServiceImpl.openSse 生命周期非原子，存在并发覆盖风险 | 并发打开 SSE 时消息推送可能丢失 | 已处理 |
+| KI-027 | 建议修改 | ClientController.create 中 clientId 无唯一性保证 | 重复 clientId 导致 MQTT 连接互踢 | 暂不处理 |
+| KI-028 | 建议修改 | AuditController 分页查询无上限约束，大 size 值可致 OOM | 恶意大分页请求耗尽 JVM 堆内存 | 已处理 |
+| KI-029 | 建议修改 | SysUserMapper.selectByClientIdWithDomain 嵌套对象映射失效 | domain 字段永远为 null | 已处理 |
+| KI-030 | 建议修改 | MqttClientService 中断连用户上下文永不清理 | userContexts 内存泄漏 | 已处理 |
+| KI-031 | 建议修改 | AuthController.getCurrentUser 异常时返回 HTTP 200 而非 401 | 前端无法正确识别认证失败 | 已处理 |
+| KI-032 | 必须修复 | ConnectionStatus checkConnection 存在竞态条件 | 旧调用的 catch 清除新调用的定时器和控制器 | 已处理 |
+| KI-033 | 必须修复 | AuthContext token 刷新可能触发无限循环 | 后端 token 轮换时前端无限请求 /auth/me | 已处理 |
+| KI-034 | 必须修复 | api.ts 的 401 处理绕过 AuthContext.logout，未关闭服务端订阅会话 | JWT 过期时服务端 MQTT+SSE 会话泄漏 | 已处理 |
+| KI-035 | 建议修改 | Publish 和 Subscribe 页面 api.getDomainTree() 缺少异常处理 | 域树加载失败用户无反馈 | 已处理 |
+| KI-036 | 建议修改 | NetworkSimulate api.getNetworkPresets() 缺少异常处理 | 预设加载失败用户无反馈 | 已处理 |
+| KI-037 | 建议修改 | DomainManage 和 ClientManage 的 getDomainLabel 遇循环 parentId 会无限循环 | 循环引用时浏览器卡死 | 已处理 |
+| KI-038 | 建议修改 | AuditLog 分页切换触发双重 API 请求 | 每次翻页产生一次无意义的额外请求 | 已处理 |
+| KI-039 | 建议修改 | SubscribeContext doCancelTopic 取消订阅失败时无用户反馈 | 用户以为取消成功但服务端订阅仍存在 | 已处理 |
+| KI-040 | 建议修改 | AuthContext refreshProfile 错误被静默吞没 | 会话验证失败用户无预警 | 已处理 |
+| KI-041 | 建议修改 | PublishContext 切换消息格式时未自动填充示例载荷 | 与设计注释不符，降低使用效率 | 已处理 |
+| KI-042 | 必须修复 | EMQX 初始 ACL 同步失败后不会继续重试 | 应用启动后可能使用空或旧 ACL 规则 | 已处理 |
+| KI-043 | 必须修复 | 用户删除或改名不会清理、迁移 ACL | 旧权限可能被下一任同名用户继承 | 已处理 |
+| KI-044 | 必须修复 | adminOnly 路由在用户资料恢复前误判管理员 | 管理员刷新管理页会被跳转到普通页面 | 已处理 |
+| KI-045 | 建议修改 | Broker 取消订阅失败仍返回成功 | 前端、本地记忆与 Broker 订阅状态可能不一致 | 已处理 |
+| KI-046 | 建议修改 | 多个更新/删除接口忽略受影响行数 | 不存在资源可能返回成功或 500 | 已处理 |
+| KI-047 | 建议修改 | 登录失败的 401 被全局当作会话过期处理 | 密码错误等认证失败提示被吞掉 | 已处理 |
+| KI-048 | 建议修改 | refresh token 契约不可用且文档、DTO、前端服务不一致 | Access token 过期后无法按文档刷新 | 已处理 |
+| KI-049 | 建议修改 | NetworkController 弱网模拟命令超时保护不可靠 | 子进程卡住时请求线程可能长期阻塞 | 已处理 |
 
 ## 详细说明
 

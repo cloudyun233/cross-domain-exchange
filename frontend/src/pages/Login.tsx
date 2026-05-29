@@ -22,9 +22,8 @@ const Login: React.FC = () => {
   const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true);
     try {
-      await login(values.username, values.password);
-      const savedUser = sessionStorage.getItem('user');
-      const roleType = savedUser ? JSON.parse(savedUser).roleType : '';
+      const user = await login(values.username, values.password);
+      const roleType = user.roleType;
       message.success('登录成功，登录态仅在当前标签页有效');
       navigate(roleType?.toUpperCase() === 'ADMIN' ? '/dashboard' : '/publish');
     } catch (err: any) {

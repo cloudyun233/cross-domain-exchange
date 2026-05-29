@@ -29,22 +29,20 @@
   "message": "登录成功",
   "data": {
     "token": "...",
-    "refreshToken": "...",
-    "expiresIn": 3600
+    "expires": 3600,
+    "username": "admin",
+    "roleType": "admin",
+    "domainCode": "all",
+    "clientId": "admin_001"
   }
 }
 ```
 
 ---
 
-### POST `/api/auth/refresh`
+### Token refresh is unsupported
 
-刷新过期的 JWT 令牌。
-
-**请求头**: `Authorization: Bearer <refresh_token>`
-
-**响应**: 同登录接口
-
+Access-token refresh is not supported. Re-login with `/api/auth/login` after the token expires.
 ---
 
 ### GET `/api/auth/me`

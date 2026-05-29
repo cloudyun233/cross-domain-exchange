@@ -15,6 +15,7 @@ import org.springframework.web.client.RestOperations;
 import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -104,7 +105,7 @@ public class EmqxApiClient {
                 String allUrl = baseUrl + "/authorization/sources/built_in_database/rules/all";
                 exchange(allUrl, HttpMethod.POST, Map.of("rules", List.of(rule)), String.class);
             } else {
-                String userUrl = baseUrl + "/authorization/sources/built_in_database/rules/users/" + acl.getUsername();
+                String userUrl = baseUrl + "/authorization/sources/built_in_database/rules/users/" + encodePathSegment(acl.getUsername());
                 Map<String, Object> body = new HashMap<>();
                 body.put("username", acl.getUsername());
                 body.put("rules", List.of(rule));
@@ -216,7 +217,7 @@ public class EmqxApiClient {
                 String username = entry.getKey();
                 List<Map<String, Object>> aclRules = entry.getValue();
                 try {
-                    String url = userUrlTemplate.replace("{username}", username);
+                    String url = userUrlTemplate.replace("{username}", encodePathSegment(username));
                     Map<String, Object> body = new HashMap<>();
                     body.put("username", username);
                     body.put("rules", aclRules);
@@ -321,6 +322,11 @@ public class EmqxApiClient {
         String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
         headers.set("Authorization", "Basic " + encodedAuth);
         return headers;
+    }
+
+    private String encodePathSegment(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8)
+                .replace("+", "%20");
     }
 
     /**

@@ -6,7 +6,13 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import com.cde.dto.ApiResponse;
+import com.cde.dto.LoginResponse;
+import com.cde.service.AuthService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -33,6 +39,17 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final AuthService authService;
+    private final ObjectMapper objectMapper;
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getServletPath();
+        if (!StringUtils.hasText(path)) {
+            path = request.getRequestURI();
+        }
+        return "/api/auth/login".equals(path);
+    }
 
     /**
      * 执行 JWT 认证过滤。
@@ -52,9 +69,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String token = resolveToken(request);
         if (StringUtils.hasText(token)) {
-            if (jwtUtil.validateToken(token)) {
+            if (!jwtUtil.validateToken(token)) {
+                writeUnauthorized(response, "令牌无效或已过期");
+                return;
+            }
+
+            try {
                 String usernameFromToken = jwtUtil.getUsernameFromToken(token);
                 String roleType = jwtUtil.getRoleTypeFromToken(token);
+                if (!StringUtils.hasText(roleType)) {
+                    throw new BadCredentialsException("令牌缺少角色声明");
+                }
+
+                LoginResponse current = authService.getCurrentUserProfile(usernameFromToken, token);
+                if (!roleType.equals(current.getRoleType())
+                        || !safeEquals(jwtUtil.getClientIdFromToken(token), current.getClientId())
+                        || !safeEquals(jwtUtil.getDomainCodeFromToken(token), current.getDomainCode())) {
+                    throw new BadCredentialsException("令牌声明与当前用户状态不一致");
+                }
 
                 List<SimpleGrantedAuthority> authorities = List.of(
                         new SimpleGrantedAuthority("ROLE_" + roleType.toUpperCase())
@@ -63,9 +95,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 UsernamePasswordAuthenticationToken auth =
                         new UsernamePasswordAuthenticationToken(usernameFromToken, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(auth);
+            } catch (Exception e) {
+                SecurityContextHolder.clearContext();
+                writeUnauthorized(response, e.getMessage());
+                return;
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private boolean safeEquals(String left, String right) {
+        return left == null ? right == null : left.equals(right);
+    }
+
+    private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        objectMapper.writeValue(response.getWriter(), ApiResponse.nack("UNAUTHORIZED", message));
     }
 
     /**

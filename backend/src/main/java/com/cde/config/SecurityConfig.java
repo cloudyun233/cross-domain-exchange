@@ -1,7 +1,10 @@
 package com.cde.config;
 
 import com.cde.security.JwtAuthenticationFilter;
+import com.cde.dto.ApiResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -32,6 +35,7 @@ public class SecurityConfig {
 
     /** JWT 认证过滤器，在 UsernamePasswordAuthenticationFilter 之前执行 Token 校验 */
     private final JwtAuthenticationFilter jwtFilter;
+    private final ObjectMapper objectMapper;
 
     /**
      * 密码编码器，使用 BCrypt 算法进行单向哈希。
@@ -64,8 +68,21 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .headers(headers -> headers.frameOptions(fo -> fo.sameOrigin()))
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(401);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding("UTF-8");
+                    objectMapper.writeValue(response.getWriter(), ApiResponse.nack("UNAUTHORIZED", "请先登录"));
+                })
+                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                    response.setStatus(403);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding("UTF-8");
+                    objectMapper.writeValue(response.getWriter(), ApiResponse.nack("ACCESS_DENIED", "无权访问该资源"));
+                }))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
+                .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/api/status/**").permitAll()
                 .requestMatchers("/api/webhook/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()

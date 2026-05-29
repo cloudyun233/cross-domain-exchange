@@ -7,7 +7,7 @@
  * - 使用 AbortController 在每次轮询前取消上一次未完成的请求，避免竞态
  * - 未登录时不渲染
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Badge, Space, Tag, Tooltip } from 'antd';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,6 +21,7 @@ const ConnectionStatus: React.FC = () => {
   const [emqxConnected, setEmqxConnected] = useState(false);
   const { user } = useAuth();
   const { mqttConnected, mqttProtocol } = useSubscribe();
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (!user) {
@@ -37,6 +38,7 @@ const ConnectionStatus: React.FC = () => {
       if (activeTimeoutId) clearTimeout(activeTimeoutId);
       if (activeController) activeController.abort();
 
+      const requestId = ++requestIdRef.current;
       activeController = new AbortController();
       const controller = activeController;
       // 设置超时自动取消，避免请求无限挂起
@@ -48,6 +50,7 @@ const ConnectionStatus: React.FC = () => {
           api.checkEmqxStatus(controller.signal),
         ]);
 
+        if (requestId !== requestIdRef.current) return;
         // 请求成功后清理超时计时器和控制器引用
         if (activeTimeoutId) clearTimeout(activeTimeoutId);
         activeTimeoutId = null;
@@ -55,6 +58,7 @@ const ConnectionStatus: React.FC = () => {
         setBackendConnected(backendResp.status === 'ok');
         setEmqxConnected(emqxResp.status === 'online');
       } catch {
+        if (requestId !== requestIdRef.current) return;
         // 请求失败（含超时/取消）同样清理引用，并标记为离线
         if (activeTimeoutId) clearTimeout(activeTimeoutId);
         activeTimeoutId = null;
@@ -73,6 +77,7 @@ const ConnectionStatus: React.FC = () => {
     // 组件卸载时清理轮询定时器和可能正在进行的请求
     return () => {
       clearInterval(interval);
+      requestIdRef.current += 1;
       if (activeTimeoutId) clearTimeout(activeTimeoutId);
       if (activeController) activeController.abort();
     };

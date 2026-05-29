@@ -34,21 +34,25 @@ public class EmqxAclSyncInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         try {
             for (int attempt = 1; attempt <= 10; attempt++) {
-                if (emqxApiClient.isApiReady()) {
+                if (!emqxApiClient.isApiReady()) {
+                    log.info("Waiting for EMQX HTTP API to become ready, attempt {}", attempt);
+                    Thread.sleep(2000);
+                    continue;
+                }
+
+                try {
                     aclService.syncToEmqx();
                     log.info("Initial ACL sync to EMQX completed on attempt {}", attempt);
                     return;
+                } catch (Exception e) {
+                    log.warn("Initial ACL sync attempt {} failed: {}", attempt, e.getMessage());
+                    Thread.sleep(2000);
                 }
-
-                log.info("Waiting for EMQX HTTP API to become ready, attempt {}", attempt);
-                Thread.sleep(2000);
             }
-            log.warn("Initial ACL sync skipped because EMQX HTTP API never became ready");
+            log.warn("Initial ACL sync did not complete after all attempts");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.warn("Initial ACL sync interrupted");
-        } catch (Exception e) {
-            log.warn("Initial ACL sync to EMQX failed: {}", e.getMessage());
         }
     }
 }

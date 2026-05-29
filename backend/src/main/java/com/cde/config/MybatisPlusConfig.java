@@ -3,6 +3,7 @@ package com.cde.config;
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -19,6 +20,9 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MybatisPlusConfig {
 
+    @Value("${spring.datasource.url:}")
+    private String datasourceUrl;
+
     /**
      * 注册 MyBatis-Plus 拦截器，包含分页内拦截器。
      *
@@ -27,7 +31,15 @@ public class MybatisPlusConfig {
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
-        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.H2));
+        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(resolveDbType()));
         return interceptor;
+    }
+
+    private DbType resolveDbType() {
+        String url = datasourceUrl == null ? "" : datasourceUrl.toLowerCase();
+        if (url.startsWith("jdbc:mysql:")) {
+            return DbType.MYSQL;
+        }
+        return DbType.H2;
     }
 }

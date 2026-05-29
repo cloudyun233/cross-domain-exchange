@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -95,6 +96,7 @@ public class MqttClientService {
 
     /** 每个用户对应一个 MQTT 上下文，key 为 username */
     private final Map<String, UserMqttContext> userContexts = new ConcurrentHashMap<>();
+    private final Map<String, Object> userLocks = new ConcurrentHashMap<>();
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  用户上下文
@@ -117,6 +119,7 @@ public class MqttClientService {
         final Map<String, Integer> subscribedTopics = new ConcurrentHashMap<>();
         /** 连接状态标记。volatile 保证 HiveMQ 回调线程与业务线程之间的可见性 */
         volatile boolean connected;
+        volatile long disconnectedAtMillis;
 
         UserMqttContext(Mqtt5AsyncClient client) {
             this.client = client;
@@ -150,8 +153,13 @@ public class MqttClientService {
      * @param messageListener 收到消息后的回调 (topic, payload)，可为 null（纯发布场景）
      */
     public void connectForUser(String username, String jwtToken, BiConsumer<String, String> messageListener) {
-        log.info("[MQTT] connectForUser 开始: username={}", username);
+        synchronized (lockForUser(username)) {
+            connectForUserLocked(username, jwtToken, messageListener);
+        }
+    }
 
+    private void connectForUserLocked(String username, String jwtToken, BiConsumer<String, String> messageListener) {
+        log.info("[MQTT] connectForUser 开始: username={}", username);
         // 若已有 context 且连接正常，仅更新 listener
         UserMqttContext existing = userContexts.get(username);
         if (existing != null && existing.connected && existing.client.getState().isConnected()) {
@@ -227,13 +235,14 @@ public class MqttClientService {
      */
     public void subscribeForUser(String username, String topic, int qos) {
         UserMqttContext ctx = requireConnected(username);
+        MqttQos mqttQos = resolveQos(qos);
 
         log.info("[MQTT] 订阅: username={}, topic={}, qos={}", username, topic, qos);
 
         try {
             CompletableFuture<Mqtt5SubAck> future = ctx.client.subscribeWith()
                     .topicFilter(topic)
-                    .qos(MqttQos.fromCode(qos))
+                    .qos(mqttQos)
                     .send();
             Mqtt5SubAck ack = future.get(subscribeTimeoutSeconds, TimeUnit.SECONDS);
 
@@ -254,11 +263,8 @@ public class MqttClientService {
         UserMqttContext ctx = userContexts.get(username);
         if (ctx == null) {
             log.warn("[MQTT] unsubscribe 时无 context: username={}, topic={}", username, topic);
-            return;
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "MQTT 未连接，请先连接 MQTT");
         }
-
-        ctx.subscribedTopics.remove(topic);
-        log.info("[MQTT] 本地已移除订阅记忆: username={}, topic={}", username, topic);
 
         if (ctx.connected && ctx.client.getState().isConnected()) {
             try {
@@ -266,10 +272,16 @@ public class MqttClientService {
                         .get(subscribeTimeoutSeconds, TimeUnit.SECONDS);
                 log.info("[MQTT] broker 已取消订阅: username={}, topic={}", username, topic);
             } catch (Exception e) {
-                log.warn("[MQTT] broker 取消订阅失败(忽略): username={}, topic={}, error={}",
+                log.warn("[MQTT] broker 取消订阅失败: username={}, topic={}, error={}",
                         username, topic, e.getMessage());
+                throw new BusinessException(HttpStatus.BAD_GATEWAY, "Broker取消订阅失败，请重试");
             }
+        } else {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "MQTT 连接已断开，请重新连接后取消订阅");
         }
+
+        ctx.subscribedTopics.remove(topic);
+        log.info("[MQTT] 本地已移除订阅记忆: username={}, topic={}", username, topic);
     }
 
     /**
@@ -281,6 +293,7 @@ public class MqttClientService {
      */
     public void publishForUser(String username, String topic, String payload, int qos, boolean retain) {
         UserMqttContext ctx = requireConnected(username);
+        MqttQos mqttQos = resolveQos(qos);
 
         log.info("[MQTT] 发布: username={}, topic={}, qos={}, retain={}, payloadLen={}",
                 username, topic, qos, retain, payload.length());
@@ -289,7 +302,7 @@ public class MqttClientService {
             CompletableFuture<Mqtt5PublishResult> future = ctx.client.publishWith()
                     .topic(topic)
                     .payload(payload.getBytes(StandardCharsets.UTF_8))
-                    .qos(MqttQos.fromCode(qos))
+                    .qos(mqttQos)
                     .retain(retain)
                     .send();
             future.get(publishTimeoutSeconds, TimeUnit.SECONDS);
@@ -312,6 +325,7 @@ public class MqttClientService {
         }
 
         ctx.connected = false;
+        ctx.disconnectedAtMillis = System.currentTimeMillis();
         log.info("[MQTT] 断开 MQTT: username={}, 保留订阅记忆={}", username,
                 ctx.subscribedTopics.keySet());
 
@@ -348,6 +362,7 @@ public class MqttClientService {
         ctx.subscribedTopics.clear();
         ctx.messageListener = null;
         ctx.connected = false;
+        ctx.disconnectedAtMillis = System.currentTimeMillis();
         silentDisconnectClient(ctx.client);
 
         log.info("[MQTT] closeAll 完成: username={}", username);
@@ -385,6 +400,23 @@ public class MqttClientService {
             }
         }
         return "未连接";
+    }
+
+    @Scheduled(fixedDelay = 60000L)
+    public void cleanupDisconnectedContexts() {
+        long expiryMillis = TimeUnit.SECONDS.toMillis(3600);
+        long now = System.currentTimeMillis();
+        userContexts.entrySet().removeIf(entry -> {
+            UserMqttContext ctx = entry.getValue();
+            boolean expired = !ctx.connected
+                    && ctx.disconnectedAtMillis > 0
+                    && now - ctx.disconnectedAtMillis > expiryMillis;
+            if (expired) {
+                silentDisconnectClient(ctx.client);
+                log.info("[MQTT] 清理过期断连上下文: username={}", entry.getKey());
+            }
+            return expired;
+        });
     }
 
     @PreDestroy
@@ -445,6 +477,7 @@ public class MqttClientService {
 
         Mqtt5ConnAck connAck = future.get(connectTimeoutSeconds, TimeUnit.SECONDS);
         ctx.connected = true;
+        ctx.disconnectedAtMillis = 0;
 
         log.info("[MQTT] CONNACK 收到: username={}, clientId={}, sessionPresent={}, reasonCode={}",
                 username, clientId, connAck.isSessionPresent(), connAck.getReasonCode());
@@ -517,9 +550,10 @@ public class MqttClientService {
         log.info("[MQTT] 开始恢复订阅: username={}, topics={}", username, ctx.subscribedTopics.keySet());
         ctx.subscribedTopics.forEach((topic, qos) -> {
             try {
+                MqttQos mqttQos = resolveQos(qos);
                 CompletableFuture<Mqtt5SubAck> future = ctx.client.subscribeWith()
                         .topicFilter(topic)
-                        .qos(MqttQos.fromCode(qos))
+                        .qos(mqttQos)
                         .send();
                 future.get(subscribeTimeoutSeconds, TimeUnit.SECONDS);
                 log.info("[MQTT] 恢复订阅成功: username={}, topic={}, qos={}", username, topic, qos);
@@ -540,8 +574,21 @@ public class MqttClientService {
         if (!ctx.connected) {
             log.info("[MQTT] 客户端自动重连检测: username={}", username);
             ctx.connected = true;
+            ctx.disconnectedAtMillis = 0;
         }
         return ctx;
+    }
+
+    private MqttQos resolveQos(int qos) {
+        MqttQos mqttQos = MqttQos.fromCode(qos);
+        if (mqttQos == null) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "QoS 必须为 0、1 或 2");
+        }
+        return mqttQos;
+    }
+
+    private Object lockForUser(String username) {
+        return userLocks.computeIfAbsent(username, key -> new Object());
     }
 
     private String resolveClientId(String username) {
@@ -560,7 +607,7 @@ public class MqttClientService {
      * <p>自动重连：调用 {@code automaticReconnectWithDefaultConfig()} 启用 HiveMQ 内置的
      * 指数退避重连机制，网络中断后自动恢复连接。</p>
      */
-    private Mqtt5AsyncClient buildTlsClient(String clientId) {
+    protected Mqtt5AsyncClient buildTlsClient(String clientId) {
         var builder = MqttClient.builder()
                 .useMqttVersion5()
                 .identifier(clientId)
@@ -585,7 +632,7 @@ public class MqttClientService {
      * <p>无 TLS 加密，仅作为 TLS 不可用时的降级选择。
      * 同样启用自动重连机制。</p>
      */
-    private Mqtt5AsyncClient buildTcpClient(String clientId) {
+    protected Mqtt5AsyncClient buildTcpClient(String clientId) {
         return MqttClient.builder()
                 .useMqttVersion5()
                 .identifier(clientId)

@@ -54,11 +54,15 @@ const Subscribe: React.FC = () => {
   } = useSubscribe();
 
   useEffect(() => {
-    api.getDomainTree().then((resp) => {
-      if (resp.success) {
-        setDomainTree(resp.data);
-      }
-    });
+    api.getDomainTree()
+      .then((resp) => {
+        if (resp.success) {
+          setDomainTree(resp.data);
+        }
+      })
+      .catch((error) => {
+        message.error(error?.message || '域树加载失败');
+      });
   }, []);
 
   const handleConnect = async () => {
@@ -95,9 +99,13 @@ const Subscribe: React.FC = () => {
   };
 
   const handleCancel = async () => {
+    await handleCancelTopic();
+  };
+
+  const handleCancelTopic = async (targetTopic?: string) => {
     setActionLoading(true);
     try {
-      await cancelTopic();
+      await cancelTopic(targetTopic);
     } catch (error: any) {
       message.error(error.message || '取消订阅失败');
     } finally {
@@ -165,7 +173,18 @@ const Subscribe: React.FC = () => {
                 <div>
                   <Text type="secondary" style={{ fontSize: 12 }}>已记忆的订阅: </Text>
                   {subscribedTopics.map((t) => (
-                    <Tag key={t} color="blue" style={{ marginBottom: 4 }}>{t}</Tag>
+                    <Tag
+                      key={t}
+                      color="blue"
+                      closable
+                      onClose={(event) => {
+                        event.preventDefault();
+                        void handleCancelTopic(t);
+                      }}
+                      style={{ marginBottom: 4 }}
+                    >
+                      {t}
+                    </Tag>
                   ))}
                 </div>
               )}

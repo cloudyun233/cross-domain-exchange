@@ -8,6 +8,9 @@ import org.springframework.web.bind.annotation.*;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -27,6 +30,8 @@ import java.util.concurrent.TimeUnit;
 public class NetworkController {
 
     private static final int PROCESS_TIMEOUT_SECONDS = 30;
+    private String shellExecutable = "sh";
+    private String shellOption = "-c";
 
     /**
      * 执行命令并返回输出，带超时控制
@@ -40,30 +45,40 @@ public class NetworkController {
      * @throws Exception 命令执行超时或失败时抛出
      */
     private String executeCommand(String command, int timeoutSeconds) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder("sh", "-c", command);
+        ProcessBuilder pb = new ProcessBuilder(shellExecutable, shellOption, command);
         pb.redirectErrorStream(true); // 合并 stderr 到 stdout，便于统一读取
         Process process = pb.start();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
 
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
+        Future<String> outputFuture = executor.submit(() -> {
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
             }
-        }
+            return output.toString();
+        });
 
-        boolean completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
-        if (!completed) {
-            process.destroyForcibly();
-            throw new RuntimeException("命令执行超时（" + timeoutSeconds + "秒）");
-        }
+        try {
+            boolean completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+            if (!completed) {
+                process.destroyForcibly();
+                process.waitFor(5, TimeUnit.SECONDS);
+                throw new RuntimeException("命令执行超时（" + timeoutSeconds + "秒）");
+            }
 
-        int exitCode = process.exitValue();
-        if (exitCode != 0) {
-            throw new RuntimeException("命令执行失败，退出码: " + exitCode + "，输出: " + output);
-        }
+            String output = outputFuture.get(1, TimeUnit.SECONDS);
+            int exitCode = process.exitValue();
+            if (exitCode != 0) {
+                throw new RuntimeException("命令执行失败，退出码: " + exitCode + "，输出: " + output);
+            }
 
-        return output.toString().trim();
+            return output.trim();
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     /**

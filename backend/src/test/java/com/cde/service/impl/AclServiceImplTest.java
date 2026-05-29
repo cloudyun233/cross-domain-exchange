@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,6 +40,16 @@ class AclServiceImplTest {
     private AclServiceImpl aclService;
 
     @Test
+    void listMethodsDelegateToMapper() {
+        SysTopicAcl acl = acl("producer_medical_swh", "cross_domain/medical/swh");
+        when(aclMapper.selectList(null)).thenReturn(List.of(acl));
+        when(aclMapper.selectList(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(acl));
+
+        assertThat(aclService.listAll()).containsExactly(acl);
+        assertThat(aclService.listByUsername("producer_medical_swh")).containsExactly(acl);
+    }
+
+    @Test
     void createUsesFullSyncInsteadOfIncrementalPush() {
         SysTopicAcl acl = acl("producer_medical_swh", "cross_domain/medical/swh");
         List<SysTopicAcl> beforeRules = List.of();
@@ -53,12 +64,42 @@ class AclServiceImplTest {
     }
 
     @Test
+    void updateReturnsStoredAclAfterSuccessfulSync() {
+        SysTopicAcl newAcl = acl("producer_finance_swh", "cross_domain/finance/swh");
+        newAcl.setId(7L);
+        List<SysTopicAcl> beforeRules = List.of();
+        List<SysTopicAcl> afterRules = List.of(newAcl);
+        when(aclMapper.selectList(null)).thenReturn(beforeRules, afterRules);
+        when(aclMapper.updateById(newAcl)).thenReturn(1);
+        when(emqxApiClient.syncAllAclRules(afterRules)).thenReturn(true);
+        when(aclMapper.selectById(7L)).thenReturn(newAcl);
+
+        SysTopicAcl result = aclService.update(7L, newAcl);
+
+        assertThat(result).isSameAs(newAcl);
+    }
+
+    @Test
+    void updateThrowsNotFoundWhenNoRowIsUpdated() {
+        SysTopicAcl newAcl = acl("producer_finance_swh", "cross_domain/finance/swh");
+        when(aclMapper.selectList(null)).thenReturn(List.of());
+        when(aclMapper.updateById(newAcl)).thenReturn(0);
+
+        assertThatThrownBy(() -> aclService.update(404L, newAcl))
+                .isInstanceOf(BusinessException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        verify(emqxApiClient, never()).syncAllAclRules(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void updateRestoresPreviousEmqxRulesWhenFullSyncFails() {
         SysTopicAcl oldAcl = acl("producer_medical_swh", "cross_domain/medical/swh");
         SysTopicAcl newAcl = acl("producer_finance_swh", "cross_domain/finance/swh");
         List<SysTopicAcl> beforeRules = List.of(oldAcl);
         List<SysTopicAcl> afterRules = List.of(newAcl);
         when(aclMapper.selectList(null)).thenReturn(beforeRules, afterRules);
+        when(aclMapper.updateById(newAcl)).thenReturn(1);
         when(emqxApiClient.syncAllAclRules(afterRules)).thenReturn(false);
         when(emqxApiClient.syncAllAclRules(beforeRules)).thenReturn(true);
 
@@ -75,6 +116,58 @@ class AclServiceImplTest {
     }
 
     @Test
+    void updateStillThrowsWhenRestoreAlsoFails() {
+        SysTopicAcl oldAcl = acl("producer_medical_swh", "cross_domain/medical/swh");
+        SysTopicAcl newAcl = acl("producer_finance_swh", "cross_domain/finance/swh");
+        List<SysTopicAcl> beforeRules = List.of(oldAcl);
+        List<SysTopicAcl> afterRules = List.of(newAcl);
+        when(aclMapper.selectList(null)).thenReturn(beforeRules, afterRules);
+        when(aclMapper.updateById(newAcl)).thenReturn(1);
+        when(emqxApiClient.syncAllAclRules(afterRules)).thenReturn(false);
+        when(emqxApiClient.syncAllAclRules(beforeRules)).thenReturn(false);
+
+        assertThatThrownBy(() -> aclService.update(1L, newAcl))
+                .isInstanceOf(BusinessException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.BAD_GATEWAY);
+
+        verify(emqxApiClient, times(2)).syncAllAclRules(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void deleteSyncsAfterRowIsDeletedAndThrowsWhenMissing() {
+        SysTopicAcl acl = acl("producer_medical_swh", "cross_domain/medical/swh");
+        when(aclMapper.selectList(null)).thenReturn(List.of(acl), List.of());
+        when(aclMapper.deleteById(7L)).thenReturn(1);
+        when(emqxApiClient.syncAllAclRules(List.of())).thenReturn(true);
+
+        aclService.delete(7L);
+
+        verify(aclMapper).deleteById(7L);
+
+        when(aclMapper.selectList(null)).thenReturn(List.of());
+        when(aclMapper.deleteById(404L)).thenReturn(0);
+
+        assertThatThrownBy(() -> aclService.delete(404L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void deleteByUsernameDeletesRowsThenSyncsCurrentRules() {
+        SysTopicAcl oldAcl = acl("producer_medical_swh", "cross_domain/medical/swh");
+        SysTopicAcl remainingAcl = acl("consumer_finance_swh", "cross_domain/finance/swh");
+        when(aclMapper.selectList(null)).thenReturn(List.of(oldAcl, remainingAcl), List.of(remainingAcl));
+        when(emqxApiClient.syncAllAclRules(List.of(remainingAcl))).thenReturn(true);
+
+        aclService.deleteByUsername("producer_medical_swh");
+
+        verify(aclMapper).delete(org.mockito.ArgumentMatchers.any());
+        verify(emqxApiClient).syncAllAclRules(List.of(remainingAcl));
+    }
+
+    @Test
     void syncToEmqxThrowsBusinessExceptionWhenFullSyncFails() {
         SysTopicAcl acl = acl("producer_medical_swh", "cross_domain/medical/swh");
         List<SysTopicAcl> rules = List.of(acl);
@@ -86,6 +179,18 @@ class AclServiceImplTest {
                 .hasMessage("ACL规则同步到EMQX失败，请检查Broker状态后重试")
                 .extracting("status")
                 .isEqualTo(HttpStatus.BAD_GATEWAY);
+    }
+
+    @Test
+    void syncToEmqxReturnsAfterSuccessfulFullSync() {
+        SysTopicAcl acl = acl("producer_medical_swh", "cross_domain/medical/swh");
+        List<SysTopicAcl> rules = List.of(acl);
+        when(aclMapper.selectList(null)).thenReturn(rules);
+        when(emqxApiClient.syncAllAclRules(rules)).thenReturn(true);
+
+        aclService.syncToEmqx();
+
+        verify(emqxApiClient).syncAllAclRules(rules);
     }
 
     @Test

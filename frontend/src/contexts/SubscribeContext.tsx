@@ -65,7 +65,7 @@ interface SubscribeContextType {
   /** 订阅主题（MQTT 必须已连接） */
   subscribeTopic: () => Promise<void>;
   /** 取消订阅 */
-  cancelTopic: () => Promise<void>;
+  cancelTopic: (topic?: string) => Promise<void>;
   refreshSessionStatus: () => Promise<void>;
   clearMessages: () => void;
 }
@@ -297,6 +297,12 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
     }, delay);
   };
 
+  const enableSseReconnect = () => {
+    shouldSseReconnRef.current = true;
+    sseReconnAttemptsRef.current = 0;
+    clearSseReconnTimer();
+  };
+
   // ── 核心操作 ──────────────────────────────────────────────────────────────
 
   /**
@@ -306,6 +312,7 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
   const connectMqtt = async () => {
     console.info('[MQTT] 请求连接...');
 
+    enableSseReconnect();
     await ensureSseConnected();
 
     const resp = await api.connectSubscribeSession();
@@ -363,18 +370,23 @@ export const SubscribeProvider: React.FC<{ children: ReactNode }> = ({ children 
   /**
    * 取消订阅。
    */
-  const doCancelTopic = async () => {
-    const current = activeTopic;
+  const doCancelTopic = async (targetTopic?: string) => {
+    const current = targetTopic || activeTopic;
     if (!current) { message.info('无活跃订阅'); return; }
 
     console.info('[Subscribe] 取消订阅:', current);
 
     try {
-      await api.cancelSubscribe(current);
-      setActiveTopic(null);
+      const resp = await api.cancelSubscribe(current);
+      if (resp?.success) {
+        applySessionStatus(resp.data);
+      }
+      if (activeTopic === current) setActiveTopic(null);
       message.info(`已取消订阅: ${current}`);
     } catch (err) {
       console.error('[Subscribe] 取消订阅失败', err);
+      message.error((err as Error)?.message || `取消订阅失败: ${current}`);
+      throw err;
     }
     await refreshSessionStatus();
   };

@@ -38,6 +38,7 @@ public class SubscribeServiceImpl implements SubscribeService {
 
     /** 用户 → SSE emitter */
     private final Map<String, SseEmitter> userEmitters = new ConcurrentHashMap<>();
+    private final Map<String, Object> sseLocks = new ConcurrentHashMap<>();
 
     // ═══════════════════════════════════════════════════════════════════════════
     //  SSE 长连接
@@ -45,41 +46,39 @@ public class SubscribeServiceImpl implements SubscribeService {
 
     @Override
     public SseEmitter openSse(String username) {
-        log.info("[SSE] openSse: username={}", username);
+        synchronized (lockForUser(username)) {
+            log.info("[SSE] openSse: username={}", username);
 
-        // 先关闭旧emitter，保证单用户单连接
-        completeEmitter(username);
+            completeEmitter(username);
 
-        // 创建新emitter并注册生命周期回调，确保异常时从Map中移除避免内存泄漏
-        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
-        userEmitters.put(username, emitter);
+            SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+            userEmitters.put(username, emitter);
 
-        emitter.onCompletion(() -> {
-            log.info("[SSE] onCompletion: username={}", username);
-            userEmitters.remove(username, emitter);
-        });
-        emitter.onTimeout(() -> {
-            log.info("[SSE] onTimeout: username={}", username);
-            userEmitters.remove(username, emitter);
-        });
-        emitter.onError(err -> {
-            log.warn("[SSE] onError: username={}, error={}", username, err.getMessage());
-            userEmitters.remove(username, emitter);
-        });
+            emitter.onCompletion(() -> {
+                log.info("[SSE] onCompletion: username={}", username);
+                userEmitters.remove(username, emitter);
+            });
+            emitter.onTimeout(() -> {
+                log.info("[SSE] onTimeout: username={}", username);
+                userEmitters.remove(username, emitter);
+            });
+            emitter.onError(err -> {
+                log.warn("[SSE] onError: username={}, error={}", username, err.getMessage());
+                userEmitters.remove(username, emitter);
+            });
 
-        // 发送 connected 事件
-        try {
-            emitter.send(SseEmitter.event().name("connected").data(Map.of("message", "SSE连接已建立")));
-            log.info("[SSE] 已发送 connected 事件: username={}", username);
-        } catch (IOException e) {
-            log.error("[SSE] 发送 connected 事件失败: username={}", username, e);
-            userEmitters.remove(username, emitter);
+            try {
+                emitter.send(SseEmitter.event().name("connected").data(Map.of("message", "SSE连接已建立")));
+                log.info("[SSE] 已发送 connected 事件: username={}", username);
+            } catch (IOException e) {
+                log.error("[SSE] 发送 connected 事件失败: username={}", username, e);
+                userEmitters.remove(username, emitter);
+            }
+
+            mqttClientService.setMessageListener(username, createPushCallback(username));
+
+            return emitter;
         }
-
-        // 若 MQTT 已有 context，更新 messageListener 指向当前 emitter
-        mqttClientService.setMessageListener(username, createPushCallback(username));
-
-        return emitter;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -203,6 +202,10 @@ public class SubscribeServiceImpl implements SubscribeService {
             log.info("[SSE] 关闭旧 emitter: username={}", username);
             existing.complete();
         }
+    }
+
+    private Object lockForUser(String username) {
+        return sseLocks.computeIfAbsent(username, key -> new Object());
     }
 
     /**

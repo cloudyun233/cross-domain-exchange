@@ -16,12 +16,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
 
-/**
- * 认证服务实现
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -37,25 +37,12 @@ public class AuthServiceImpl implements AuthService {
         SysUser user = getRequiredUser(request.getUsername());
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new BadCredentialsException("密码错误");
+            throw new BadCredentialsException("Bad username or password");
         }
 
         String domainCode = buildDomainCode(user.getDomainId());
         String token = jwtUtil.generateToken(user.getUsername(), user.getClientId(), domainCode, user.getRoleType());
         return buildLoginResponse(user, token);
-    }
-
-    @Override
-    public LoginResponse refreshToken(String oldToken) {
-        if (!jwtUtil.validateToken(oldToken)) {
-            throw new BadCredentialsException("令牌无效或已过期");
-        }
-
-        String username = jwtUtil.getUsernameFromToken(oldToken);
-        SysUser user = getRequiredUser(username);
-        String domainCode = buildDomainCode(user.getDomainId());
-        String newToken = jwtUtil.generateToken(user.getUsername(), user.getClientId(), domainCode, user.getRoleType());
-        return buildLoginResponse(user, newToken);
     }
 
     @Override
@@ -72,7 +59,7 @@ public class AuthServiceImpl implements AuthService {
     private SysUser getRequiredUser(String username) {
         SysUser user = getUserByUsername(username);
         if (user == null) {
-            throw new BadCredentialsException("用户不存在: " + username);
+            throw new BadCredentialsException("User does not exist: " + username);
         }
         return user;
     }
@@ -92,22 +79,16 @@ public class AuthServiceImpl implements AuthService {
 
     private String resolveRoleName(String roleType) {
         if (roleType == null) {
-            return "未知角色";
+            return "Unknown";
         }
         return switch (roleType.toLowerCase(Locale.ROOT)) {
-            case "admin" -> "管理员";
-            case "producer" -> "生产者";
-            case "consumer" -> "消费者";
+            case "admin" -> "Administrator";
+            case "producer" -> "Producer";
+            case "consumer" -> "Consumer";
             default -> roleType;
         };
     }
 
-    /**
-     * 构建域路径编码
-     *
-     * <p>从用户所属域向上递归遍历父域，拼接编码路径。
-     * 例如domainId指向"民政"域，其父域为"政务"，则返回"gov/minzheng"。</p>
-     */
     private String buildDomainCode(Long domainId) {
         if (domainId == null) {
             return "all";
@@ -115,33 +96,28 @@ public class AuthServiceImpl implements AuthService {
         return String.join("/", loadDomainSegments(domainId, true));
     }
 
-    /**
-     * 构建域路径名称
-     *
-     * <p>与buildDomainCode逻辑相同，但拼接的是中文名称。
-     * 例如返回"政务 / 民政"。</p>
-     */
     private String buildDomainName(Long domainId) {
         if (domainId == null) {
-            return "全域";
+            return "All";
         }
         return String.join(" / ", loadDomainSegments(domainId, false));
     }
 
-    /**
-     * 向上遍历域层级，收集编码或名称片段
-     *
-     * <p>从当前domainId开始，逐级查询parentId直到根域（parentId=null），
-     * 将每级片段插入列表头部以保证从根到叶的顺序。</p>
-     */
     private List<String> loadDomainSegments(Long domainId, boolean useCode) {
         List<String> segments = new ArrayList<>();
+        Set<Long> visited = new HashSet<>();
         Long currentId = domainId;
 
         while (currentId != null) {
+            if (!visited.add(currentId)) {
+                throw new BadCredentialsException("User domain contains a cycle");
+            }
             SysDomain domain = domainMapper.selectById(currentId);
             if (domain == null) {
-                break;
+                throw new BadCredentialsException("User domain does not exist");
+            }
+            if (!Objects.equals(domain.getStatus(), 1)) {
+                throw new BadCredentialsException("User domain is disabled");
             }
             segments.add(0, useCode ? domain.getDomainCode() : domain.getDomainName());
             currentId = domain.getParentId();

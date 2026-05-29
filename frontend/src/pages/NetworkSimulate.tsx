@@ -57,13 +57,18 @@ const NetworkSimulate: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getNetworkPresets().then(res => {
-      if (res.success) {
-        setPresets(res.data);
-        setSelectedPreset('无限制');
-        setCurrentPreset('无限制');
-      }
-    }).finally(() => setLoading(false));
+    api.getNetworkPresets()
+      .then(res => {
+        if (res.success) {
+          setPresets(res.data);
+          setSelectedPreset('无限制');
+          setCurrentPreset('无限制');
+        }
+      })
+      .catch((error) => {
+        message.error(error?.message || '网络预设加载失败');
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   /**

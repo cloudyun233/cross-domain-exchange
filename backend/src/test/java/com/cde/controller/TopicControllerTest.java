@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class TopicControllerTest {
@@ -35,14 +36,141 @@ class TopicControllerTest {
     private JsonSchemaValidationService jsonSchemaValidationService;
 
     @Test
-    void publishRecordsAuditAndSkipsBrokerWhenJsonConversionFails() {
-        TopicController controller = new TopicController(
-                topicService,
-                List.of(new FailingJsonConverter()),
-                new ObjectMapper(),
-                auditService,
-                jsonSchemaValidationService
+    void getTopicTreeReturnsServiceData() {
+        TopicController controller = controller(List.of());
+        when(topicService.buildDomainTopicTree()).thenReturn(List.of());
+
+        assertThat(controller.getTopicTree().isSuccess()).isTrue();
+        assertThat(controller.getTopicTree().getData()).isEmpty();
+    }
+
+    @Test
+    void publishStructuredJsonAndTextPayloads() {
+        TopicController controller = controller(List.of(new ValidJsonConverter()));
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken("producer_medical_swh", null);
+
+        controller.publish(
+                "cross_domain/medical/swh",
+                "{\"name\":\"alice\"}",
+                1,
+                false,
+                "structured",
+                "Bearer token",
+                auth
         );
+        controller.publish(
+                "cross_domain/medical/swh",
+                "plain text",
+                0,
+                false,
+                "text",
+                "Bearer token",
+                auth
+        );
+
+        verify(topicService).publishMsg(
+                org.mockito.Mockito.eq("cross_domain/medical/swh"),
+                org.mockito.Mockito.eq("{\"name\":\"alice\"}"),
+                org.mockito.Mockito.eq(1),
+                org.mockito.Mockito.eq(false),
+                org.mockito.Mockito.eq("producer_medical_swh"),
+                org.mockito.Mockito.eq("token")
+        );
+        verify(topicService).publishMsg(
+                org.mockito.Mockito.eq("cross_domain/medical/swh"),
+                org.mockito.Mockito.eq("plain text"),
+                org.mockito.Mockito.eq(0),
+                org.mockito.Mockito.eq(false),
+                org.mockito.Mockito.eq("producer_medical_swh"),
+                org.mockito.Mockito.eq("token")
+        );
+    }
+
+    @Test
+    void publishStructuredXmlWrapsConvertedJsonWithMetadata() {
+        TopicController controller = controller(List.of(new ValidXmlConverter()));
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken("producer_medical_swh", null);
+
+        controller.publish(
+                "cross_domain/medical/swh",
+                "<root/>",
+                1,
+                true,
+                null,
+                "Bearer token",
+                auth
+        );
+
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(topicService).publishMsg(
+                org.mockito.Mockito.eq("cross_domain/medical/swh"),
+                payloadCaptor.capture(),
+                org.mockito.Mockito.eq(1),
+                org.mockito.Mockito.eq(true),
+                org.mockito.Mockito.eq("producer_medical_swh"),
+                org.mockito.Mockito.eq("token")
+        );
+        assertThat(payloadCaptor.getValue()).contains("_meta", "source_format", "xml", "data");
+    }
+
+    @Test
+    void publishRejectsInvalidStructuredFormatAndMissingConverter() {
+        TopicController controller = controller(List.of());
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken("producer_medical_swh", null);
+
+        assertThatThrownBy(() -> controller.publish(
+                "cross_domain/medical/swh",
+                "",
+                1,
+                false,
+                "structured",
+                "Bearer token",
+                auth
+        )).isInstanceOf(BusinessException.class);
+
+        assertThatThrownBy(() -> controller.publish(
+                "cross_domain/medical/swh",
+                "{}",
+                1,
+                false,
+                "csv",
+                "Bearer token",
+                auth
+        )).isInstanceOf(BusinessException.class);
+
+        assertThatThrownBy(() -> controller.publish(
+                "cross_domain/medical/swh",
+                "{}",
+                1,
+                false,
+                "json",
+                "Bearer token",
+                auth
+        )).isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void publishRejectsXmlWhenConvertedPayloadCannotBeWrapped() {
+        TopicController controller = controller(List.of(new InvalidXmlConverter()));
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken("producer_medical_swh", null);
+
+        assertThatThrownBy(() -> controller.publish(
+                "cross_domain/medical/swh",
+                "<root/>",
+                1,
+                false,
+                "xml",
+                "Bearer token",
+                auth
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting("status")
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void publishRecordsAuditAndSkipsBrokerWhenJsonConversionFails() {
+        TopicController controller = controller(List.of(new FailingJsonConverter()));
         UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken("producer_medical_swh", null);
 
         assertThatThrownBy(() -> controller.publish(
@@ -78,13 +206,7 @@ class TopicControllerTest {
 
     @Test
     void publishRecordsAuditAndStillPublishesWhenSchemaValidationFails() {
-        TopicController controller = new TopicController(
-                topicService,
-                List.of(new ValidJsonConverter()),
-                new ObjectMapper(),
-                auditService,
-                jsonSchemaValidationService
-        );
+        TopicController controller = controller(List.of(new ValidJsonConverter()));
         UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken("producer_medical_swh", null);
         doThrow(new BusinessException(HttpStatus.BAD_REQUEST, "JSON Schema 校验失败: 缺少必填字段 populationId"))
                 .when(jsonSchemaValidationService)
@@ -118,6 +240,16 @@ class TopicControllerTest {
         );
     }
 
+    private TopicController controller(List<DataConverter> converters) {
+        return new TopicController(
+                topicService,
+                converters,
+                new ObjectMapper(),
+                auditService,
+                jsonSchemaValidationService
+        );
+    }
+
     private static class FailingJsonConverter implements DataConverter {
         @Override
         public boolean supports(String formatType) {
@@ -144,6 +276,40 @@ class TopicControllerTest {
         @Override
         public String convertToJson(Object rawData) {
             return rawData.toString();
+        }
+
+        @Override
+        public Object convertFromJson(String json, String targetFormat) {
+            return json;
+        }
+    }
+
+    private static class ValidXmlConverter implements DataConverter {
+        @Override
+        public boolean supports(String formatType) {
+            return "xml".equalsIgnoreCase(formatType);
+        }
+
+        @Override
+        public String convertToJson(Object rawData) {
+            return "{\"value\":\"ok\"}";
+        }
+
+        @Override
+        public Object convertFromJson(String json, String targetFormat) {
+            return json;
+        }
+    }
+
+    private static class InvalidXmlConverter implements DataConverter {
+        @Override
+        public boolean supports(String formatType) {
+            return "xml".equalsIgnoreCase(formatType);
+        }
+
+        @Override
+        public String convertToJson(Object rawData) {
+            return "not-json";
         }
 
         @Override

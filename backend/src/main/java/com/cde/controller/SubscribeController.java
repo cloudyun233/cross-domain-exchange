@@ -86,13 +86,8 @@ public class SubscribeController {
         String username = auth.getName();
         String token = authHeader.replace("Bearer ", "");
         log.info("[API] POST /connect: username={}", username);
-        try {
-            subscribeService.connectMqtt(username, token);
-            return ApiResponse.ok("MQTT连接已建立", subscribeService.getSessionStatus(username));
-        } catch (BusinessException e) {
-            log.warn("[API] connect 失败: username={}, error={}", username, e.getMessage());
-            return ApiResponse.fail(e.getMessage());
-        }
+        subscribeService.connectMqtt(username, token);
+        return ApiResponse.ok("MQTT连接已建立", subscribeService.getSessionStatus(username));
     }
 
     /**
@@ -114,13 +109,8 @@ public class SubscribeController {
     ) {
         String username = auth.getName();
         log.info("[API] POST /topic: username={}, topic={}, qos={}", username, topic, qos);
-        try {
-            subscribeService.subscribeTopic(username, topic, qos);
-            return ApiResponse.ok("订阅成功", subscribeService.getSessionStatus(username));
-        } catch (BusinessException e) {
-            log.warn("[API] subscribeTopic 失败: username={}, topic={}, error={}", username, topic, e.getMessage());
-            return ApiResponse.fail(e.getMessage());
-        }
+        subscribeService.subscribeTopic(username, topic, qos);
+        return ApiResponse.ok("订阅成功", subscribeService.getSessionStatus(username));
     }
 
     /**

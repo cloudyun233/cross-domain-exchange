@@ -16,6 +16,7 @@ public interface AclService {
     SysTopicAcl create(SysTopicAcl acl);
     SysTopicAcl update(Long id, SysTopicAcl acl);
     void delete(Long id);
+    void deleteByUsername(String username);
     /** 全量同步ACL到EMQX Broker */
     void syncToEmqx();
 }

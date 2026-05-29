@@ -28,14 +28,36 @@ const DomainManage: React.FC = () => {
     if (!domainId) return '-';
     const lookup = new Map(domains.map((item) => [item.id, item]));
     const names: string[] = [];
+    const visited = new Set<number>();
     let current = lookup.get(domainId);
 
     while (current) {
+      if (visited.has(current.id)) {
+        names.unshift('循环引用');
+        break;
+      }
+      visited.add(current.id);
       names.unshift(current.domainName);
       current = current.parentId ? lookup.get(current.parentId) : undefined;
     }
 
     return names.join(' / ');
+  };
+
+  const isDescendantOfEditingDomain = (domainId: number): boolean => {
+    if (!editingId) return false;
+    const lookup = new Map(domains.map((item) => [item.id, item]));
+    const visited = new Set<number>();
+    let current = lookup.get(domainId);
+
+    while (current) {
+      if (current.id === editingId) return true;
+      if (visited.has(current.id)) return true;
+      visited.add(current.id);
+      current = current.parentId ? lookup.get(current.parentId) : undefined;
+    }
+
+    return false;
   };
 
   const fetchDomains = async () => {
@@ -163,7 +185,7 @@ const DomainManage: React.FC = () => {
               allowClear
               placeholder="不选表示顶级域"
               options={domains
-                .filter((domain) => domain.id !== editingId)
+                .filter((domain) => domain.id !== editingId && !isDescendantOfEditingDomain(domain.id))
                 .map((domain) => ({ value: domain.id, label: getDomainLabel(domain.id) }))}
             />
           </Form.Item>

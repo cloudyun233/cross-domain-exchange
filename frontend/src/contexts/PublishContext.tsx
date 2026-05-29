@@ -125,8 +125,10 @@ export const PublishProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const handleSetFormat = (newFormat: 'structured' | 'text') => {
+    const samplePayload = newFormat === 'text' ? PLAIN_TEXT_SAMPLE : STRUCTURED_SAMPLE;
     setFormatState(newFormat);
-    persistState({ format: newFormat });
+    setPayloadState(samplePayload);
+    persistState({ format: newFormat, payload: samplePayload });
   };
 
   const handleSetPayload = (newPayload: string) => {

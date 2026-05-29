@@ -38,6 +38,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AuditServiceImpl implements AuditService {
 
+    private static final int MAX_EXPORT_ROWS = 500;
+    private static final int MAX_PAGE_SIZE = 500;
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final SysAuditLogMapper auditLogMapper;
@@ -68,11 +70,7 @@ public class AuditServiceImpl implements AuditService {
     public void recordFromWebhook(Map<String, Object> event) {
         String eventType = String.valueOf(event.getOrDefault("event", "unknown"));
         String clientId = String.valueOf(event.getOrDefault("clientid", "unknown"));
-        String ipAddress = String.valueOf(event.getOrDefault("peername", "0.0.0.0"));
-        // 提取IP部分 (peername格式: "ip:port")
-        if (ipAddress.contains(":")) {
-            ipAddress = ipAddress.substring(0, ipAddress.lastIndexOf(':'));
-        }
+        String ipAddress = parsePeerAddress(String.valueOf(event.getOrDefault("peername", "0.0.0.0")));
 
         String actionType;
         String detail;
@@ -137,7 +135,9 @@ public class AuditServiceImpl implements AuditService {
 
     @Override
     public Page<SysAuditLog> queryLogs(int page, int size, String clientId, String actionType) {
-        return auditLogMapper.selectPage(new Page<>(page, size), buildLogQuery(clientId, actionType));
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        return auditLogMapper.selectPage(new Page<>(safePage, safeSize), buildLogQuery(clientId, actionType));
     }
 
     /**
@@ -148,7 +148,9 @@ public class AuditServiceImpl implements AuditService {
      */
     @Override
     public byte[] exportLogsAsPdf(String clientId, String actionType) {
-        List<SysAuditLog> logs = auditLogMapper.selectList(buildLogQuery(clientId, actionType));
+        List<SysAuditLog> logs = auditLogMapper
+                .selectPage(new Page<>(1, MAX_EXPORT_ROWS), buildLogQuery(clientId, actionType))
+                .getRecords();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         Document document = new Document(PageSize.A4.rotate(), 24, 24, 28, 28);
         try {
@@ -200,6 +202,23 @@ public class AuditServiceImpl implements AuditService {
         }
         wrapper.orderByDesc(SysAuditLog::getActionTime);
         return wrapper;
+    }
+
+    private String parsePeerAddress(String peername) {
+        if (!StringUtils.hasText(peername)) {
+            return "0.0.0.0";
+        }
+        if (peername.startsWith("[")) {
+            int closingBracket = peername.indexOf(']');
+            if (closingBracket > 0) {
+                return peername.substring(1, closingBracket);
+            }
+        }
+        int separator = peername.lastIndexOf(':');
+        if (separator > 0 && peername.indexOf(':') == separator) {
+            return peername.substring(0, separator);
+        }
+        return peername;
     }
 
     /** 使用STSong-Light字体，支持中文字符渲染（iText内置CJK字体，无需外部TTF文件） */

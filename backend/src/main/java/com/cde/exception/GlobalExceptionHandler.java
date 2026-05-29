@@ -4,8 +4,10 @@ import com.cde.dto.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -57,7 +59,23 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.nack(resolveCode(e.getStatus()), e.getMessage(), details));
     }
 
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException e) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .findFirst()
+                .map(error -> error.getDefaultMessage() == null ? "请求参数不合法" : error.getDefaultMessage())
+                .orElse("请求参数不合法");
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.nack("INVALID_REQUEST", message));
+    }
+
     /** 兜底处理：捕获所有未被上方处理器匹配的异常，记录错误日志后返回 500。 */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody(HttpMessageNotReadableException e) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.nack("INVALID_REQUEST", "Request body is missing or invalid"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
         log.error("Request processing failed", e);

@@ -31,9 +31,15 @@ const ClientManage: React.FC = () => {
     if (!domainId) return '全域';
     const lookup = new Map(domains.map((item) => [item.id, item]));
     const names: string[] = [];
+    const visited = new Set<number>();
     let current = lookup.get(domainId);
 
     while (current) {
+      if (visited.has(current.id)) {
+        names.unshift('循环引用');
+        break;
+      }
+      visited.add(current.id);
       names.unshift(current.domainName);
       current = current.parentId ? lookup.get(current.parentId) : undefined;
     }

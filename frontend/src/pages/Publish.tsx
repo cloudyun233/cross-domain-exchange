@@ -57,11 +57,15 @@ const Publish: React.FC = () => {
   } = usePublish();
 
   useEffect(() => {
-    api.getDomainTree().then((resp) => {
-      if (resp.success) {
-        setTopicTree(resp.data);
-      }
-    });
+    api.getDomainTree()
+      .then((resp) => {
+        if (resp.success) {
+          setTopicTree(resp.data);
+        }
+      })
+      .catch((error) => {
+        message.error(error?.message || '域树加载失败');
+      });
   }, []);
 
   /**

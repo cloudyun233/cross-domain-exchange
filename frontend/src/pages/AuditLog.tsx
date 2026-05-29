@@ -30,10 +30,20 @@ const AuditLog: React.FC = () => {
         setLogs(res.data.records || []);
         setTotal(res.data.total || 0);
       }
+    } catch (error: any) {
+      message.error(error?.message || '审计日志加载失败');
     } finally { setLoading(false); }
   };
 
   useEffect(() => { fetchLogs(); }, [page]);
+
+  const reloadFirstPage = () => {
+    if (page === 1) {
+      void fetchLogs(1);
+      return;
+    }
+    setPage(1);
+  };
 
   const exportPdf = async () => {
     setExporting(true);
@@ -58,7 +68,7 @@ const AuditLog: React.FC = () => {
   /** 操作类型 → Tag 颜色映射，失败/拒绝类用红色，成功类用绿色/蓝色 */
   const actionTypeColors: Record<string, string> = {
     connect: 'green', disconnect: 'default',
-    publish: 'blue', publish_fail: 'red', format_convert_fail: 'red',
+    publish: 'blue', publish_fail: 'red', format_convert_fail: 'red', json_schema_validate_fail: 'red',
     subscribe: 'cyan', unsubscribe: 'default',
     acl_deny: 'red', acl_allow: 'green',
     deliver: 'purple',
@@ -69,7 +79,7 @@ const AuditLog: React.FC = () => {
   /** 操作类型 → 中文标签映射，用于表格展示和筛选下拉 */
   const actionTypeLabels: Record<string, string> = {
     connect: '客户端连接', disconnect: '客户端断开',
-    publish: '消息发布', publish_fail: '发布失败', format_convert_fail: '发布失败',
+    publish: '消息发布', publish_fail: '发布失败', format_convert_fail: '发布失败', json_schema_validate_fail: 'Schema校验失败',
     subscribe: '主题订阅', unsubscribe: '取消订阅',
     acl_deny: '权限拒绝', acl_allow: 'ACL通过',
     deliver: '消息投递',
@@ -79,7 +89,7 @@ const AuditLog: React.FC = () => {
 
   /** 判断操作是否属于危险类型（权限拒绝、发布失败），用于行高亮和警告图标 */
   const isDanger = (action: string) =>
-    ['acl_deny', 'publish_fail', 'format_convert_fail'].includes(action);
+    ['acl_deny', 'publish_fail', 'format_convert_fail', 'json_schema_validate_fail'].includes(action);
 
   const columns = [
     { title: '时间', dataIndex: 'actionTime', width: 170,
@@ -117,7 +127,7 @@ const AuditLog: React.FC = () => {
             style={{ width: 140 }}
             value={filters.clientId}
             onChange={e => setFilters(prev => ({ ...prev, clientId: e.target.value }))}
-            onPressEnter={() => { setPage(1); fetchLogs(1); }}
+            onPressEnter={reloadFirstPage}
           />
           <Select
             placeholder="操作类型"
@@ -127,7 +137,7 @@ const AuditLog: React.FC = () => {
             onChange={v => setFilters(prev => ({ ...prev, actionType: v || '' }))}
             options={Object.entries(actionTypeLabels).map(([k, v]) => ({ value: k, label: v }))}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => { setPage(1); fetchLogs(1); }}>
+          <Button icon={<ReloadOutlined />} onClick={reloadFirstPage}>
             刷新
           </Button>
           <Button type="primary" icon={<DownloadOutlined />} loading={exporting} onClick={exportPdf}>
@@ -145,7 +155,7 @@ const AuditLog: React.FC = () => {
           rowClassName={(record) => isDanger(record.actionType) ? 'audit-deny' : ''}
           pagination={{
             current: page, pageSize: 20, total,
-            onChange: (p) => { setPage(p); fetchLogs(p); },
+            onChange: (p) => setPage(p),
             showTotal: (t) => `共 ${t} 条记录`,
           }}
           size="small"
